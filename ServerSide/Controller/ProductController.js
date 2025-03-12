@@ -226,32 +226,92 @@ exports.getAllProducts = catchAsyncErrors(async (req, res, next) => {
 // Create a new product
 exports.createProduct = catchAsyncErrors(async (req, res, next) => {
     try {
-        const { name, description, price, category, stock, unit, organic, certification, harvestDate, expiryDate } = req.body;
+        console.log("=== PRODUCT CREATION PROCESS STARTED ===");
+        console.log("Request body:", req.body);
+        console.log("Request files:", req.files);
+        console.log("User ID:", req.user.id);
+        
+        const { 
+            name, 
+            description, 
+            price, 
+            category, 
+            availableQuantity, 
+            unit, 
+            minimumOrderQuantity,
+            growingPeriod,
+            currentGrowthStage,
+            estimatedHarvestDate,
+            waterSource,
+            pesticidesUsed,
+            soilType,
+            organic,
+            certification,
+            openToCustomGrowing,
+            imageUrls,
+            imagePublicIds
+        } = req.body;
         
         // Validate required fields
-        if (!name || !description || !price || !category || !stock || !unit) {
+        if (!name || !description || !price || !category || !availableQuantity || !unit) {
+            console.error("Missing required fields");
             return next(new ErrorHandler('Please fill all required fields', 400));
         }
 
-        // Handle image uploads
-        const imageUrls = [];
-        if (req.files && req.files.images) {
-            const images = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+        console.log("Required fields validation passed");
+        
+        // Process images
+        let images = [];
+        
+        // If image URLs and public IDs are provided (pre-uploaded to Cloudinary)
+        if (imageUrls && imagePublicIds) {
+            console.log("Processing pre-uploaded images");
+            console.log("Image URLs:", imageUrls);
+            console.log("Image Public IDs:", imagePublicIds);
             
-            for (const image of images) {
+            // Convert to arrays if single values
+            const urls = Array.isArray(imageUrls) ? imageUrls : [imageUrls];
+            const publicIds = Array.isArray(imagePublicIds) ? imagePublicIds : [imagePublicIds];
+            
+            console.log("Processed URLs:", urls);
+            console.log("Processed Public IDs:", publicIds);
+            
+            // Create image objects
+            for (let i = 0; i < urls.length; i++) {
+                if (urls[i] && publicIds[i]) {
+                    images.push({
+                        public_id: publicIds[i],
+                        url: urls[i]
+                    });
+                }
+            }
+            
+            console.log("Final image objects from pre-uploaded images:", images);
+        }
+        
+        // Handle direct file uploads if any
+        if (req.files && req.files.images) {
+            console.log("Processing direct file uploads");
+            const uploadedFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+            console.log("Number of files to upload:", uploadedFiles.length);
+            
+            for (const file of uploadedFiles) {
                 try {
-                    const result = await cloudinary.uploader.upload(image.tempFilePath, {
+                    console.log("Uploading file:", file.name);
+                    const result = await cloudinary.uploader.upload(file.tempFilePath, {
                         folder: 'products',
                         crop: "scale"
                     });
                     
-                    imageUrls.push({
+                    console.log("Cloudinary upload result:", result.public_id);
+                    
+                    images.push({
                         public_id: result.public_id,
                         url: result.secure_url
                     });
                     
                     // Clean up temp file
-                    fs.unlink(image.tempFilePath, (err) => {
+                    fs.unlink(file.tempFilePath, (err) => {
                         if (err) console.error('Error deleting temp file:', err);
                     });
                 } catch (error) {
@@ -259,26 +319,84 @@ exports.createProduct = catchAsyncErrors(async (req, res, next) => {
                     return next(new ErrorHandler('Error uploading images', 500));
                 }
             }
+            
+            console.log("Final image objects after direct uploads:", images);
         }
+        
+        // Process seasonal availability
+        console.log("Processing seasonal availability");
+        let seasonalAvailability = {
+            startMonth: 1,
+            endMonth: 12
+        };
+        
+        if (req.body['seasonalAvailability[startMonth]'] && req.body['seasonalAvailability[endMonth]']) {
+            seasonalAvailability = {
+                startMonth: parseInt(req.body['seasonalAvailability[startMonth]']),
+                endMonth: parseInt(req.body['seasonalAvailability[endMonth]'])
+            };
+        }
+        
+        console.log("Seasonal availability:", seasonalAvailability);
+        
+        // Process farming practices
+        console.log("Processing farming practices");
+        let farmingPractices = ['Conventional'];
+        if (req.body.farmingPractices) {
+            if (Array.isArray(req.body.farmingPractices)) {
+                farmingPractices = req.body.farmingPractices;
+            } else {
+                // If it's a single value, convert to array
+                farmingPractices = [req.body.farmingPractices];
+            }
+        }
+        
+        console.log("Farming practices:", farmingPractices);
+        
+        // Process contract preferences
+        console.log("Processing contract preferences");
+        let contractPreferences = null;
+        if (openToCustomGrowing === 'true' || openToCustomGrowing === true) {
+            contractPreferences = {
+                minDuration: parseInt(req.body['contractPreferences[minDuration]']) || 30,
+                maxDuration: parseInt(req.body['contractPreferences[maxDuration]']) || 365,
+                preferredPaymentTerms: req.body['contractPreferences[preferredPaymentTerms]'] || 'Milestone'
+            };
+        }
+        
+        console.log("Contract preferences:", contractPreferences);
 
+        // Prepare product data
         const productData = {
             name,
             description,
-            price,
+            price: parseFloat(price),
             category,
-            stock,
+            availableQuantity: parseInt(availableQuantity),
             unit,
-            images: imageUrls,
-            farmer: req.user.id,
+            minimumOrderQuantity: parseInt(minimumOrderQuantity) || 1,
+            growingPeriod: parseInt(growingPeriod) || 90,
+            currentGrowthStage: currentGrowthStage || 'not_planted',
+            estimatedHarvestDate: new Date(estimatedHarvestDate),
+            seasonalAvailability,
+            farmingPractices,
+            waterSource: waterSource || 'Rainfed',
+            pesticidesUsed: pesticidesUsed === 'true' || pesticidesUsed === true,
+            soilType: soilType || '',
             organic: organic === 'true' || organic === true,
-            certification: certification || 'None'
+            certification: certification || 'None',
+            openToCustomGrowing: openToCustomGrowing === 'true' || openToCustomGrowing === true,
+            contractPreferences,
+            images,
+            farmer: req.user.id,
+            status: 'active'
         };
 
-        if (harvestDate) productData.harvestDate = new Date(harvestDate);
-        if (expiryDate) productData.expiryDate = new Date(expiryDate);
-
-        console.log('Creating product with data:', productData);
+        console.log('Creating product with processed data:', productData);
+        
+        console.log("Saving product to database...");
         const product = await Product.create(productData);
+        console.log("Product created successfully with ID:", product._id);
 
         res.status(201).json({
             success: true,

@@ -10,6 +10,7 @@ const cors = require("cors");
 const path = require("path");
 const errorMiddleware = require("./middleware/errorMiddleware");
 const contractRoutes = require('./Routes/contractRoutes');
+const uploadRoutes = require('./Routes/uploadRoutes');
 
 const app = Express();
 
@@ -45,6 +46,7 @@ cloudinaryconnect();
 app.use("/api/v1/auth", userroutes);
 app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/contracts", contractRoutes);
+app.use("/api/v1/upload", uploadRoutes);
 
 // Serve temp files
 app.use('/tmp', Express.static(path.join(__dirname, 'tmp')));

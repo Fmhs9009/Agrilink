@@ -44,8 +44,8 @@ api.interceptors.request.use(
   (config) => {
     // Get token from auth service instead of directly from localStorage
     const token = authService.getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
@@ -70,7 +70,7 @@ api.interceptors.response.use(
           authService.removeUser();
           
           if (storeInstance) {
-            storeInstance.dispatch({ type: 'auth/logout' });
+      storeInstance.dispatch({ type: 'auth/logout' });
             errorToast('Session expired. Please login again.');
           }
           break;
@@ -123,14 +123,35 @@ const handleApiResponse = async (apiCall) => {
 export const productAPI = {
   // Get all products with optional filters
   getAll: async (filters = {}) => {
+    console.log("Calling getAll products API with filters:", filters);
     return handleApiResponse(() => api.get('/products', { params: filters }));
   },
 
   // Get product by ID
   getById: async (id) => {
-    return handleApiResponse(() => api.get(`/products/${id}`));
+    console.log("Calling getById product API for ID:", id);
+    return handleApiResponse(() => api.get(`/products/product/${id}`));
   },
 
+  // Get products by farmer ID
+  getByFarmer: async (farmerId) => {
+    console.log("Calling getByFarmer API for farmer ID:", farmerId);
+    return handleApiResponse(() => api.get(`/products/farmer/products`));
+  },
+  
+  // Upload image to Cloudinary
+  uploadImage: async (imageFile) => {
+    console.log("Uploading image to Cloudinary:", imageFile.name);
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    
+    return handleApiResponse(() => api.post('/upload/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    }));
+  },
+  
   // Create new product
   create: async (productData) => {
     // Create FormData for multipart/form-data request
@@ -138,19 +159,43 @@ export const productAPI = {
     
     // Append product data
     Object.keys(productData).forEach(key => {
-      if (key !== 'images') {
+      if (key !== 'images' && key !== 'seasonalAvailability' && key !== 'contractPreferences' && key !== 'farmingPractices') {
         formData.append(key, productData[key]);
       }
     });
     
-    // Append images if any
-    if (productData.images && productData.images.length > 0) {
-      productData.images.forEach(image => {
-        formData.append('images', image);
+    // Handle seasonalAvailability separately
+    if (productData.seasonalAvailability) {
+      formData.append('seasonalAvailability[startMonth]', productData.seasonalAvailability.startMonth);
+      formData.append('seasonalAvailability[endMonth]', productData.seasonalAvailability.endMonth);
+    }
+    
+    // Handle contractPreferences separately
+    if (productData.contractPreferences) {
+      formData.append('contractPreferences[minDuration]', productData.contractPreferences.minDuration);
+      formData.append('contractPreferences[maxDuration]', productData.contractPreferences.maxDuration);
+      formData.append('contractPreferences[preferredPaymentTerms]', productData.contractPreferences.preferredPaymentTerms);
+    }
+    
+    // Handle farmingPractices array
+    if (productData.farmingPractices && productData.farmingPractices.length > 0) {
+      productData.farmingPractices.forEach((practice, index) => {
+        formData.append(`farmingPractices[${index}]`, practice);
       });
     }
     
-    return handleApiResponse(() => api.post('/products', formData, {
+    // Append images if any
+    if (productData.images && productData.images.length > 0) {
+      productData.images.forEach((image, index) => {
+        if (image.url && image.public_id) {
+          formData.append(`imageUrls[${index}]`, image.url);
+          formData.append(`imagePublicIds[${index}]`, image.public_id);
+        }
+      });
+    }
+    
+    console.log("Calling create product API with data:", Object.fromEntries(formData));
+    return handleApiResponse(() => api.post('/products/new', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -164,19 +209,43 @@ export const productAPI = {
     
     // Append product data
     Object.keys(productData).forEach(key => {
-      if (key !== 'images') {
+      if (key !== 'images' && key !== 'seasonalAvailability' && key !== 'contractPreferences' && key !== 'farmingPractices') {
         formData.append(key, productData[key]);
       }
     });
     
-    // Append images if any
-    if (productData.images && productData.images.length > 0) {
-      productData.images.forEach(image => {
-        formData.append('images', image);
+    // Handle seasonalAvailability separately
+    if (productData.seasonalAvailability) {
+      formData.append('seasonalAvailability[startMonth]', productData.seasonalAvailability.startMonth);
+      formData.append('seasonalAvailability[endMonth]', productData.seasonalAvailability.endMonth);
+    }
+    
+    // Handle contractPreferences separately
+    if (productData.contractPreferences) {
+      formData.append('contractPreferences[minDuration]', productData.contractPreferences.minDuration);
+      formData.append('contractPreferences[maxDuration]', productData.contractPreferences.maxDuration);
+      formData.append('contractPreferences[preferredPaymentTerms]', productData.contractPreferences.preferredPaymentTerms);
+    }
+    
+    // Handle farmingPractices array
+    if (productData.farmingPractices && productData.farmingPractices.length > 0) {
+      productData.farmingPractices.forEach((practice, index) => {
+        formData.append(`farmingPractices[${index}]`, practice);
       });
     }
     
-    return handleApiResponse(() => api.put(`/products/${id}`, formData, {
+    // Append images if any
+    if (productData.images && productData.images.length > 0) {
+      productData.images.forEach((image, index) => {
+        if (image.url && image.public_id) {
+          formData.append(`imageUrls[${index}]`, image.url);
+          formData.append(`imagePublicIds[${index}]`, image.public_id);
+        }
+      });
+    }
+    
+    console.log("Calling update product API for ID:", id, "with data:", Object.fromEntries(formData));
+    return handleApiResponse(() => api.put(`/products/product/${id}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -185,21 +254,19 @@ export const productAPI = {
 
   // Delete product
   delete: async (id) => {
-    return handleApiResponse(() => api.delete(`/products/${id}`));
-  },
-  
-  // Get products by farmer ID
-  getByFarmer: async (farmerId) => {
-    return handleApiResponse(() => api.get(`/products/farmer/${farmerId}`));
+    console.log("Calling delete product API for ID:", id);
+    return handleApiResponse(() => api.delete(`/products/product/${id}`));
   },
   
   // Get products by category
   getByCategory: async (category) => {
+    console.log("Calling getByCategory API for category:", category);
     return handleApiResponse(() => api.get(`/products/category/${category}`));
   },
 
   // Search products
   search: async (query) => {
+    console.log("Calling search products API with query:", query);
     return handleApiResponse(() => api.get(`/products/search`, {
       params: { q: query }
     }));
@@ -207,22 +274,26 @@ export const productAPI = {
 
   // Update product stock
   updateStock: async (id, quantity) => {
-    return handleApiResponse(() => api.patch(`/products/${id}/stock`, { quantity }));
+    console.log("Calling updateStock API for ID:", id, "with quantity:", quantity);
+    return handleApiResponse(() => api.patch(`/products/product/${id}/stock`, { quantity }));
   },
 
   // Toggle product status (active/inactive)
   toggleStatus: async (id) => {
-    return handleApiResponse(() => api.patch(`/products/${id}/toggle-status`));
+    console.log("Calling toggleStatus API for ID:", id);
+    return handleApiResponse(() => api.patch(`/products/product/${id}/toggle-status`));
   },
 
   // Add product review
   addReview: async (id, reviewData) => {
-    return handleApiResponse(() => api.post(`/products/${id}/reviews`, reviewData));
+    console.log("Calling addReview API for ID:", id, "with data:", reviewData);
+    return handleApiResponse(() => api.post(`/products/review/${id}`, reviewData));
   },
 
   // Get product reviews
   getReviews: async (id) => {
-    return handleApiResponse(() => api.get(`/products/${id}/reviews`));
+    console.log("Calling getReviews API for ID:", id);
+    return handleApiResponse(() => api.get(`/products/reviews/${id}`));
   }
 };
 
