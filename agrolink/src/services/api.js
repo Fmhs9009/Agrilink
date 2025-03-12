@@ -136,7 +136,27 @@ export const productAPI = {
   // Get products by farmer ID
   getByFarmer: async (farmerId) => {
     console.log("Calling getByFarmer API for farmer ID:", farmerId);
-    return handleApiResponse(() => api.get(`/products/farmer/products`));
+    try {
+      const response = await api.get(`/products/farmer/products`);
+      console.log("Raw farmer products response:", response);
+      
+      // Handle different response formats
+      if (response.data && response.data.products) {
+        return { data: response.data.products };
+      } else if (Array.isArray(response.data)) {
+        return { data: response.data };
+      } else {
+        console.warn("Unexpected response format from farmer products API:", response.data);
+        return { data: [] };
+      }
+    } catch (error) {
+      console.error("Error in getByFarmer:", error);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Failed to fetch farmer products',
+        data: []
+      };
+    }
   },
   
   // Upload image to Cloudinary

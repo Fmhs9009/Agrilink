@@ -183,9 +183,9 @@ const MyProducts = ({ products }) => (
               <tr key={product._id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
-                    {product.image ? (
+                    {product.images && product.images.length > 0 ? (
                       <img 
-                        src={product.image} 
+                        src={product.images[0].url} 
                         alt={product.name} 
                         className="h-10 w-10 rounded-full mr-3 object-cover"
                       />
@@ -207,13 +207,13 @@ const MyProducts = ({ products }) => (
                   ₹{formatCurrency(product.price)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {product.stock} {product.unit || 'kg'}
+                  {product.availableQuantity} {product.unit || 'kg'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    product.stock > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    product.availableQuantity > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                   }`}>
-                    {product.stock > 0 ? 'In Stock' : 'Out of Stock'}
+                    {product.availableQuantity > 0 ? 'In Stock' : 'Out of Stock'}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -355,10 +355,22 @@ const Dashboard = () => {
 
   const { data: dashboardData, loading, error } = useApi(async () => {
     try {
-      const [productsRes, contractsRes] = await Promise.all([
-        productAPI.getAll(),
-        contractAPI.getAll()
-      ]);
+      let productsRes;
+      
+      // Get products based on user role
+      if (user?.role === 'admin') {
+        console.log("Dashboard: Fetching all products for admin");
+        productsRes = await productAPI.getAll();
+      } else {
+        // Farmers see only their products
+        console.log("Dashboard: Fetching products for farmer with ID:", user?._id);
+        productsRes = user?._id ? await productAPI.getByFarmer(user._id) : { data: [] };
+      }
+      
+      const contractsRes = await contractAPI.getAll();
+      
+      console.log("Dashboard products response:", productsRes);
+      console.log("Dashboard contracts response:", contractsRes);
 
       // Ensure data is in the expected format
       const products = Array.isArray(productsRes.data) ? productsRes.data : 
@@ -366,6 +378,9 @@ const Dashboard = () => {
       
       const contracts = Array.isArray(contractsRes.data) ? contractsRes.data : 
                        (contractsRes.data?.contracts || []);
+      
+      console.log("Dashboard processed products:", products);
+      console.log("Dashboard processed contracts:", contracts);
       
       // Now safely use array methods
       const activeContracts = contracts.filter(c => c?.status === 'active').length;
@@ -393,7 +408,7 @@ const Dashboard = () => {
       console.error("Dashboard data fetch error:", error);
       throw new Error("Failed to load dashboard data. Please try again.");
     }
-  }, []);
+  }, [user]);
 
   if (error) {
     return (
