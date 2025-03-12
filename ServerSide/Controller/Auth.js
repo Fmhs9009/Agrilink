@@ -65,10 +65,33 @@ exports.Signup = async (req, res) => {
       FarmLocation: accountType === "farmer" ? FarmLocation : null,
     });
 
-    return res.status(201).json({
-      data: userData,
+    // Generate JWT token for the new user
+    const payload = {
+      email: userData.email,
+      id: userData._id,
+      accountType: userData.accountType,
+    };
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET, {
+      expiresIn: "2h",
+    });
+
+    // Remove password from response
+    userData.password = undefined;
+
+    // Set cookie options
+    const options = {
+      expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+    };
+
+    // Return success response with token and user data
+    return res.cookie("token", token, options).status(201).json({
       success: true,
       Message: "User successfully registered",
+      token: token,
+      user: userData,
     });
   } catch (error) {
     console.error("Error in signup:", error);

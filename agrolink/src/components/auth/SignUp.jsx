@@ -5,7 +5,7 @@ import { toast } from 'react-hot-toast';
 import { FaUser, FaEnvelope, FaLock, FaEye, FaEyeSlash, FaPhone, FaMapMarkerAlt } from 'react-icons/fa';
 import { setSignupData } from '../../reducer/Slice/authSlice';
 import authService from '../../services/auth/authService';
-import { ROLES } from '../../config/constants';
+import { ROLES, ROUTES } from '../../config/constants';
 import logo from '../../assets/Logo.png';
 
 const SignUp = () => {
@@ -23,7 +23,9 @@ const SignUp = () => {
     city: '',
     state: '',
     pincode: '',
-    agreeToTerms: false
+    agreeToTerms: false,
+    farmName: '', // Add farmName field
+    farmLocation: '' // Add farmLocation field
   });
   
   const [errors, setErrors] = useState({});
@@ -137,21 +139,31 @@ const SignUp = () => {
     setIsLoading(true);
     
     try {
-      const result = await authService.register({
+      // Prepare complete user data for registration
+      const userData = {
         name: formData.name,
         email: formData.email,
         password: formData.password,
         accountType: formData.role,
+        role: formData.role,
         phone: formData.phone
-      });
+      };
+      
+      // Add farm details if user is a farmer
+      if (formData.role === 'farmer') {
+        userData.farmName = formData.city; // Use city as farmName
+        userData.farmLocation = formData.address + ', ' + formData.city + ', ' + formData.state + ' - ' + formData.pincode; // Combine address fields for farmLocation
+      }
+      
+      const result = await authService.register(userData);
       
       if (result.success) {
-        // Store email for OTP verification
-        dispatch(setSignupData({ email: formData.email }));
+        // Store complete signup data for OTP verification
+        dispatch(setSignupData(userData));
         
-        // Navigate to OTP verification
-        navigate('/verify-otp');
-        toast.success('Registration successful! Please verify your email.');
+        // Navigate to OTP verification using the correct route from constants
+        navigate(ROUTES.VERIFY_OTP);
+        toast.success(result.message || 'Verification code sent to your email.');
       } else {
         setErrors({
           ...errors,
@@ -173,18 +185,30 @@ const SignUp = () => {
   
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <img
-          className="mx-auto h-16 w-auto"
-          src={logo}
-          alt="AgroLink Logo"
-        />
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+      {/* Navigation Header */}
+      <div className="absolute top-0 left-0 w-full p-3 bg-white shadow-sm">
+        <div className="container mx-auto flex justify-between items-center">
+          <Link to="/" className="flex items-center">
+            <img src={logo} alt="AgroLink Logo" className="h-8 w-auto" />
+          </Link>
+          <div className="flex space-x-4">
+            <Link to="/auth/login" className="text-green-600 hover:text-green-800 font-medium">
+              Login
+            </Link>
+            <Link to="/auth/signup" className="text-green-600 hover:text-green-800 font-medium">
+              Sign Up
+            </Link>
+          </div>
+        </div>
+      </div>
+      
+      <div className="sm:mx-auto sm:w-full sm:max-w-md mt-8">
+        <h2 className="mt-2 text-center text-3xl font-extrabold text-gray-900">
           Create your account
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
           Or{' '}
-          <Link to="/login" className="font-medium text-green-600 hover:text-green-500">
+          <Link to="/auth/login" className="font-medium text-green-600 hover:text-green-500">
             sign in to your existing account
           </Link>
         </p>
@@ -396,7 +420,7 @@ const SignUp = () => {
                     className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
                   >
                     <option value="farmer">Farmer</option>
-                    <option value="buyer">Buyer</option>
+                    <option value="customer">Customer</option>
                   </select>
                 </div>
 

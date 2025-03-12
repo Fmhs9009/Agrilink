@@ -229,41 +229,163 @@ class AuthService {
 
   async register(userData) {
     try {
-      const response = await authAxios.post('/auth/register', userData);
-      toast.success('Registration successful');
-      return { success: true, data: response.data };
+      console.log('Attempting registration with:', userData);
+      
+      // First, send OTP to the user's email
+      const otpResponse = await authAxios.post('/auth/sendOTP', { email: userData.email });
+      
+      if (!otpResponse.data.success) {
+        console.error('Failed to send OTP:', otpResponse.data);
+        return { 
+          success: false, 
+          message: otpResponse.data.Message || 'Failed to send verification code' 
+        };
+      }
+      
+      console.log('OTP sent successfully');
+      
+      // Return success with email for OTP verification
+      return { 
+        success: true, 
+        data: { 
+          message: 'Verification code sent to your email',
+          email: userData.email,
+          userData: userData // Store user data for later signup
+        } 
+      };
     } catch (error) {
+      console.error('Registration error details:', error.response?.data || error.message);
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Registration failed' 
+        message: error.response?.data?.Message || error.response?.data?.message || 'Registration failed' 
       };
     }
   }
 
   async verifyOTP(otpData) {
     try {
-      const response = await authAxios.post('/auth/verify-otp', otpData);
-      if (response.data.token) {
-        this.setToken(response.data.token);
-        this.setUser(response.data.user);
+      console.log('Verifying OTP:', otpData);
+      
+      // First verify the OTP
+      const verifyResponse = await authAxios.post('/auth/verifyotp', {
+        email: otpData.email,
+        otp: otpData.otp
+      });
+      
+      if (!verifyResponse.data.success) {
+        console.error('OTP verification failed:', verifyResponse.data);
+        return { 
+          success: false, 
+          message: verifyResponse.data.Message || 'OTP verification failed' 
+        };
       }
-      return { success: true, data: response.data };
+      
+      console.log('OTP verified successfully');
+      
+      // If userData is provided, complete the signup process
+      if (otpData.userData) {
+        console.log('Completing signup with:', otpData.userData);
+        
+        // Prepare signup data
+        const signupData = {
+          Name: otpData.userData.name,
+          email: otpData.userData.email,
+          password: otpData.userData.password,
+          accountType: otpData.userData.accountType || otpData.userData.role,
+          otp: otpData.otp
+        };
+        
+        // Ensure accountType is valid (only 'farmer' or 'customer' are allowed)
+        if (signupData.accountType === 'buyer') {
+          signupData.accountType = 'customer';
+        }
+        
+        // Add farm details if user is a farmer
+        if ((signupData.accountType === 'farmer') && 
+            otpData.userData.farmName && otpData.userData.farmLocation) {
+          signupData.farmName = otpData.userData.farmName;
+          signupData.FarmLocation = otpData.userData.farmLocation;
+          console.log('Added farm details:', { farmName: signupData.farmName, FarmLocation: signupData.FarmLocation });
+        }
+        
+        // Call signup endpoint
+        console.log('Sending signup data to backend:', signupData);
+        const signupResponse = await authAxios.post('/auth/signup', signupData);
+        
+        if (!signupResponse.data.success) {
+          console.error('Signup failed after OTP verification:', signupResponse.data);
+          return { 
+            success: false, 
+            message: signupResponse.data.Message || 'Registration failed' 
+          };
+        }
+        
+        console.log('Signup completed successfully:', signupResponse.data);
+        
+        // If signup is successful and token is provided, save it
+        if (signupResponse.data.token) {
+          this.setToken(signupResponse.data.token);
+          console.log('Token saved successfully');
+        } else {
+          console.warn('No token received from signup response');
+        }
+        
+        // Save user data if provided
+        if (signupResponse.data.user) {
+          this.setUser(signupResponse.data.user);
+          console.log('User data saved successfully');
+        } else {
+          console.warn('No user data received from signup response');
+        }
+        
+        return { 
+          success: true, 
+          data: signupResponse.data,
+          message: 'Registration successful'
+        };
+      }
+      
+      // If no userData, just return OTP verification success
+      return { 
+        success: true, 
+        data: verifyResponse.data,
+        message: 'OTP verified successfully'
+      };
     } catch (error) {
+      console.error('OTP verification error details:', error.response?.data || error.message);
       return { 
         success: false, 
-        message: error.response?.data?.message || 'OTP verification failed' 
+        message: error.response?.data?.Message || error.response?.data?.message || 'OTP verification failed' 
       };
     }
   }
 
   async resendOTP(data) {
     try {
-      const response = await authAxios.post('/auth/resend-otp', data);
-      return { success: true, data: response.data };
+      console.log('Resending OTP to:', data.email);
+      
+      const response = await authAxios.post('/auth/sendOTP', { email: data.email });
+      
+      if (!response.data.success) {
+        console.error('Failed to resend OTP:', response.data);
+        return { 
+          success: false, 
+          message: response.data.Message || 'Failed to resend verification code' 
+        };
+      }
+      
+      console.log('OTP resent successfully');
+      
+      return { 
+        success: true, 
+        data: response.data,
+        message: 'Verification code resent successfully'
+      };
     } catch (error) {
+      console.error('Resend OTP error details:', error.response?.data || error.message);
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Failed to resend OTP' 
+        message: error.response?.data?.Message || error.response?.data?.message || 'Failed to resend OTP' 
       };
     }
   }

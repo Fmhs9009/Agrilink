@@ -22,6 +22,10 @@ const authSlice = createSlice({
       state.signupData = action.payload;
     },
     
+    clearSignupData: (state) => {
+      state.signupData = null;
+    },
+    
     setUser: (state, action) => {
       state.loginData = action.payload;
       state.isAuthenticated = true;
@@ -116,7 +120,8 @@ export const {
   setError,
   refreshActivity,
   checkSession,
-  setRememberMe
+  setRememberMe,
+  clearSignupData
 } = authSlice.actions;
 
 export default authSlice.reducer;

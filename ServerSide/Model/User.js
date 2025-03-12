@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
   },
   image: {
     type: String,
-    require: true,
+   // require: true,
   },
   accountType: {
     type: String,
@@ -50,11 +50,11 @@ const userSchema = new mongoose.Schema({
   ],
   FarmName:{
     type:String,
-    require:true
+  //  require:true
   },
   FarmLocation:{
     type:String,
-    require:true
+   // require:true
   }
 });
 module.exports = mongoose.model("User", userSchema);

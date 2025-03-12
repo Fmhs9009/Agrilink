@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaKey } from 'react-icons/fa';
+import { FaKey, FaArrowLeft } from 'react-icons/fa';
 import { useSelector, useDispatch } from 'react-redux';
-import { setUser, setAuthenticated } from '../../reducer/Slice/authSlice';
+import { setUser, setAuthenticated, clearSignupData } from '../../reducer/Slice/authSlice';
 import authService from '../../services/auth/authService';
 import { ROUTES } from '../../config/constants';
 import logo from '../../assets/Logo.png';
@@ -22,7 +22,7 @@ const VerifyOTP = () => {
   
   useEffect(() => {
     if (!email) {
-      navigate('/signup');
+      navigate(ROUTES.REGISTER);
       toast.error('Please sign up first');
     }
   }, [email, navigate]);
@@ -38,16 +38,26 @@ const VerifyOTP = () => {
     setIsLoading(true);
     
     try {
+      console.log('Submitting OTP verification with:', { email, otp, userData: signupData });
+      
       const result = await authService.verifyOTP({
         email: email,
-        otp: otp
+        otp: otp,
+        userData: signupData
       });
       
+      console.log('OTP verification result:', result);
+      
       if (result.success) {
-        toast.success('Email verified successfully');
-        dispatch(setUser(result.data.user));
-        dispatch(setAuthenticated(true));
-        navigate(ROUTES.HOME);
+        // Show success message
+        toast.success('Registration successful');
+        
+        // Clear signup data
+        dispatch(clearSignupData());
+        
+        // Redirect to login page
+        console.log('Redirecting to login page');
+        navigate(ROUTES.LOGIN);
       } else {
         setError(result.message || 'Invalid OTP. Please try again.');
         toast.error(result.message || 'Invalid OTP');
@@ -76,7 +86,6 @@ const VerifyOTP = () => {
         toast.success('OTP resent successfully');
         setResendDisabled(true);
         
-        // Disable resend button for 60 seconds
         setTimeout(() => {
           setResendDisabled(false);
         }, 60000);
@@ -93,13 +102,25 @@ const VerifyOTP = () => {
   
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <Link to="/">
-            <img src={logo} alt="AgroLink Logo" className="h-16 w-auto" />
+      {/* Navigation Header */}
+      <div className="absolute top-0 left-0 w-full p-3 bg-white shadow-sm">
+        <div className="container mx-auto flex justify-between items-center">
+          <Link to="/" className="flex items-center">
+            <img src={logo} alt="AgroLink Logo" className="h-8 w-auto" />
           </Link>
+          <div className="flex space-x-4">
+            <Link to={ROUTES.LOGIN} className="text-green-600 hover:text-green-800 font-medium">
+              Login
+            </Link>
+            <Link to={ROUTES.REGISTER} className="text-green-600 hover:text-green-800 font-medium">
+              Sign Up
+            </Link>
+          </div>
         </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+      </div>
+      
+      <div className="sm:mx-auto sm:w-full sm:max-w-md mt-8">
+        <h2 className="mt-2 text-center text-3xl font-extrabold text-gray-900">
           Verify Your Account
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
@@ -156,8 +177,8 @@ const VerifyOTP = () => {
 
           <div className="mt-6 flex items-center justify-between">
             <div className="text-sm">
-              <Link to="/login" className="font-medium text-green-600 hover:text-green-500">
-                Back to login
+              <Link to={ROUTES.LOGIN} className="font-medium text-green-600 hover:text-green-500">
+                <FaArrowLeft className="inline mr-1" /> Back to login
               </Link>
             </div>
             <div className="text-sm">

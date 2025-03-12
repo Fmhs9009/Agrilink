@@ -120,7 +120,24 @@ const Login = () => {
   
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+      {/* Navigation Header */}
+      <div className="absolute top-0 left-0 w-full p-3 bg-white shadow-sm">
+        <div className="container mx-auto flex justify-between items-center">
+          <Link to="/" className="flex items-center">
+            <img src={logo} alt="AgroLink Logo" className="h-8 w-auto" />
+          </Link>
+          <div className="flex space-x-4">
+            <Link to="/auth/login" className="text-green-600 hover:text-green-800 font-medium">
+              Login
+            </Link>
+            <Link to="/auth/signup" className="text-green-600 hover:text-green-800 font-medium">
+              Sign Up
+            </Link>
+          </div>
+        </div>
+      </div>
+      
+      <div className="sm:mx-auto sm:w-full sm:max-w-md mt-8">
         <h2 className="text-center text-3xl font-extrabold text-gray-900">
           Sign in to your account
         </h2>
