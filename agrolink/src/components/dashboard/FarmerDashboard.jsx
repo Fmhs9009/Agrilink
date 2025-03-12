@@ -174,7 +174,6 @@ const MyProducts = ({ products }) => (
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
@@ -216,25 +215,11 @@ const MyProducts = ({ products }) => (
                     {product.availableQuantity > 0 ? 'In Stock' : 'Out of Stock'}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <Link 
-                    to={`/products/edit/${product._id}`}
-                    className="text-blue-600 hover:text-blue-800 mr-3"
-                  >
-                    Edit
-                  </Link>
-                  <button 
-                    className="text-red-600 hover:text-red-800"
-                    onClick={() => {/* Handle delete */}}
-                  >
-                    Delete
-                  </button>
-                </td>
               </tr>
             ))
           ) : (
             <tr>
-              <td colSpan="6" className="px-6 py-4 text-center text-sm text-gray-500">
+              <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">
                 No products found. Add your first product to start receiving contract offers.
               </td>
             </tr>
@@ -349,7 +334,7 @@ const FarmInsights = () => (
   </div>
 );
 
-const Dashboard = () => {
+const FarmerDashboard = () => {
   const user = useSelector((state) => state.auth.loginData);
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -506,8 +491,8 @@ const Dashboard = () => {
           <div className="mt-6">
             {activeTab === 'overview' && (
               <div>
-                <RecentContracts contracts={dashboardData?.recentContracts} />
                 <MyProducts products={dashboardData?.products} />
+                <RecentContracts contracts={dashboardData?.recentContracts} />
                 <FarmInsights />
               </div>
             )}
@@ -561,4 +546,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard; 
+export default FarmerDashboard; 

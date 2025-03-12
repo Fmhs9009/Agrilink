@@ -31,7 +31,7 @@ const PasswordChange = lazy(() => import("./components/auth/PasswordChange"));
 const Home = lazy(() => import("./components/home/Home"));
 const AboutUs = lazy(() => import("./components/pages/AboutUs"));
 const ContactUs = lazy(() => import("./components/pages/ContactUs"));
-const Dashboard = lazy(() => import("./components/pages/Dashboard"));
+const FarmerDashboard = lazy(() => import("./components/dashboard/FarmerDashboard"));
 
 // Shop components
 const Shop = lazy(() => import("./components/shop/Shop"));
@@ -188,7 +188,7 @@ function App() {
             <Route path="dashboard" element={
               <ProtectedRoute>
                 <Suspense fallback={<PageLoader />}>
-                  <Dashboard />
+                  <FarmerDashboard />
                 </Suspense>
               </ProtectedRoute>
             } />
