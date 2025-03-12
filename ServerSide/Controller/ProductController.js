@@ -323,6 +323,32 @@ exports.createProduct = catchAsyncErrors(async (req, res, next) => {
             console.log("Final image objects after direct uploads:", images);
         }
         
+        // Check for imageUrls in array format (from FormData)
+        if (!images.length) {
+            console.log("Checking for imageUrls in array format");
+            const urlKeys = Object.keys(req.body).filter(key => key.startsWith('imageUrls['));
+            const publicIdKeys = Object.keys(req.body).filter(key => key.startsWith('imagePublicIds['));
+            
+            console.log("URL keys:", urlKeys);
+            console.log("Public ID keys:", publicIdKeys);
+            
+            if (urlKeys.length > 0 && publicIdKeys.length > 0) {
+                for (let i = 0; i < urlKeys.length; i++) {
+                    const urlKey = `imageUrls[${i}]`;
+                    const publicIdKey = `imagePublicIds[${i}]`;
+                    
+                    if (req.body[urlKey] && req.body[publicIdKey]) {
+                        images.push({
+                            public_id: req.body[publicIdKey],
+                            url: req.body[urlKey]
+                        });
+                    }
+                }
+                
+                console.log("Final image objects from array format:", images);
+            }
+        }
+        
         // Process seasonal availability
         console.log("Processing seasonal availability");
         let seasonalAvailability = {
