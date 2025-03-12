@@ -1,0 +1,251 @@
+import axios from 'axios';
+import { jwtDecode } from 'jwt-decode';
+
+// Use sessionStorage for tokens instead of localStorage for better security
+const TOKEN_KEY = 'agrolink_auth_token';
+const USER_KEY = 'agrolink_user';
+
+// API base URL
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api';
+
+/**
+ * Securely stores authentication token in sessionStorage
+ * @param {string} token - JWT token
+ */
+const setToken = (token) => {
+  if (token) {
+    sessionStorage.setItem(TOKEN_KEY, token);
+  } else {
+    sessionStorage.removeItem(TOKEN_KEY);
+  }
+};
+
+/**
+ * Securely stores user data in sessionStorage
+ * @param {object} user - User data
+ */
+const setUser = (user) => {
+  if (user) {
+    sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+  } else {
+    sessionStorage.removeItem(USER_KEY);
+  }
+};
+
+/**
+ * Gets the stored authentication token
+ * @returns {string|null} - JWT token or null if not found
+ */
+const getToken = () => {
+  return sessionStorage.getItem(TOKEN_KEY);
+};
+
+/**
+ * Gets the stored user data
+ * @returns {object|null} - User data or null if not found
+ */
+const getUser = () => {
+  const userData = sessionStorage.getItem(USER_KEY);
+  return userData ? JSON.parse(userData) : null;
+};
+
+/**
+ * Checks if the user is authenticated
+ * @returns {boolean} - Whether the user is authenticated
+ */
+const isAuthenticated = () => {
+  const token = getToken();
+  if (!token) return false;
+  
+  try {
+    const decoded = jwtDecode(token);
+    const currentTime = Date.now() / 1000;
+    
+    // Check if token is expired
+    if (decoded.exp < currentTime) {
+      clearAuth();
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    clearAuth();
+    return false;
+  }
+};
+
+/**
+ * Clears all authentication data
+ */
+const clearAuth = () => {
+  setToken(null);
+  setUser(null);
+};
+
+/**
+ * Gets the user's role
+ * @returns {string|null} - User role or null if not authenticated
+ */
+const getUserRole = () => {
+  const user = getUser();
+  return user ? user.accountType : null;
+};
+
+/**
+ * Checks if the user has a specific role
+ * @param {string|string[]} roles - Role(s) to check
+ * @returns {boolean} - Whether the user has the role
+ */
+const hasRole = (roles) => {
+  const userRole = getUserRole();
+  if (!userRole) return false;
+  
+  if (Array.isArray(roles)) {
+    return roles.includes(userRole);
+  }
+  
+  return userRole === roles;
+};
+
+/**
+ * Makes an authenticated API request
+ * @param {string} endpoint - API endpoint
+ * @param {object} options - Request options
+ * @returns {Promise<object>} - API response
+ */
+const apiRequest = async (endpoint, options = {}) => {
+  const { method = 'GET', data = null, headers = {} } = options;
+  
+  const token = getToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  
+  try {
+    const response = await axios({
+      method,
+      url: `${API_BASE_URL}${endpoint}`,
+      data,
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers
+      }
+    });
+    
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      clearAuth();
+    }
+    throw error;
+  }
+};
+
+/**
+ * Logs in a user
+ * @param {object} credentials - Login credentials
+ * @returns {Promise<object>} - Login result
+ */
+const login = async (credentials) => {
+  try {
+    const response = await apiRequest('/auth/login', {
+      method: 'POST',
+      data: credentials
+    });
+    
+    if (response.token) {
+      setToken(response.token);
+      setUser(response.user);
+    }
+    
+    return response;
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+};
+
+/**
+ * Signs up a new user
+ * @param {object} userData - User registration data
+ * @returns {Promise<object>} - Signup result
+ */
+const signup = async (userData) => {
+  try {
+    return await apiRequest('/auth/signup', {
+      method: 'POST',
+      data: userData
+    });
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+};
+
+/**
+ * Verifies an OTP
+ * @param {object} otpData - OTP verification data
+ * @returns {Promise<object>} - Verification result
+ */
+const verifyOTP = async (otpData) => {
+  try {
+    const response = await apiRequest('/auth/verify-otp', {
+      method: 'POST',
+      data: otpData
+    });
+    
+    if (response.token) {
+      setToken(response.token);
+      setUser(response.user);
+    }
+    
+    return response;
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+};
+
+/**
+ * Logs out the current user
+ * @returns {Promise<object>} - Logout result
+ */
+const logout = async () => {
+  try {
+    await apiRequest('/auth/logout', { method: 'POST' });
+    clearAuth();
+    return { success: true };
+  } catch (error) {
+    clearAuth();
+    return { success: false, message: error.message };
+  }
+};
+
+/**
+ * Checks authentication status with the server
+ * @returns {Promise<boolean>} - Whether the user is authenticated
+ */
+const checkAuthStatus = async () => {
+  if (!getToken()) return false;
+  
+  try {
+    const response = await apiRequest('/auth/authenticate', { method: 'POST' });
+    return response.success === true;
+  } catch (error) {
+    clearAuth();
+    return false;
+  }
+};
+
+// Export the authentication service
+const authService = {
+  login,
+  signup,
+  verifyOTP,
+  logout,
+  isAuthenticated,
+  getToken,
+  getUser,
+  getUserRole,
+  hasRole,
+  checkAuthStatus
+};
+
+export default authService; 
