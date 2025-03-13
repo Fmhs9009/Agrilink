@@ -162,13 +162,13 @@ const Shop = () => {
       try {
         // Try to fetch products from API
         const productsResponse = await productAPI.getAll();
-        
-        if (productsResponse && productsResponse.success && productsResponse.data && productsResponse.data.length > 0) {
-          setProducts(productsResponse.data);
+       
+        if (productsResponse && productsResponse.success ) {
+          setProducts(productsResponse.products);
           setUseMockData(false);
         } else {
           // If API returns empty data, use mock data
-          console.log('API returned empty data, using mock products');
+    
           setProducts(MOCK_PRODUCTS);
           setUseMockData(true);
           toast('Using demo products for preview', {

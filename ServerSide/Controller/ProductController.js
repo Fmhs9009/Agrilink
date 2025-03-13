@@ -598,10 +598,11 @@ exports.createProduct = catchAsyncErrors(async (req, res, next) => {
 
 // Get single product details
 exports.getProductDetails = catchAsyncErrors(async (req, res, next) => {
+   
     const product = await Product.findById(req.params.id)
         .populate('farmer', 'name email')
         .populate('ratings.user', 'name');
-
+console.log("efefwefwef",product);
     if (!product) {
         return next(new ErrorHandler('Product not found', 404));
     }

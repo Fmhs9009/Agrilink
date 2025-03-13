@@ -123,7 +123,7 @@ const handleApiResponse = async (apiCall) => {
 export const productAPI = {
   // Get all products with optional filters
   getAll: async (filters = {}) => {
-    console.log("Calling getAll products API with filters:", filters);
+   // console.log("Calling getAll products API with filters:", filters);
     return handleApiResponse(() => api.get('/products', { params: filters }));
   },
 
@@ -151,7 +151,7 @@ export const productAPI = {
       }
     } catch (error) {
       console.error("Error in getByFarmer:", error);
-      return { 
+      return {
         success: false, 
         message: error.response?.data?.message || 'Failed to fetch farmer products',
         data: []
@@ -275,7 +275,29 @@ export const productAPI = {
   // Delete product
   delete: async (id) => {
     console.log("Calling delete product API for ID:", id);
-    return handleApiResponse(() => api.delete(`/products/product/${id}`));
+    try {
+      const response = await api.delete(`/products/product/${id}`);
+      console.log("Delete product response:", response);
+      
+      if (response.status === 200 || response.status === 204) {
+        return { 
+          success: true, 
+          message: 'Product deleted successfully' 
+        };
+      } else {
+        return { 
+          success: false, 
+          message: response.data?.message || 'Failed to delete product' 
+        };
+      }
+    } catch (error) {
+      console.error("Error in delete product:", error);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Failed to delete product',
+        error: error.response?.data || error.message
+      };
+    }
   },
   
   // Get products by category

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { FaChartLine, FaUsers, FaShoppingCart, FaWarehouse, FaMoneyBillWave, FaCalendarCheck, FaHandshake, FaSeedling, FaClipboardList, FaTractor, FaChartBar, FaMapMarkerAlt, FaLeaf } from 'react-icons/fa';
+import { FaChartLine, FaUsers, FaShoppingCart, FaWarehouse, FaMoneyBillWave, FaCalendarCheck, FaHandshake, FaSeedling, FaClipboardList, FaTractor, FaChartBar, FaMapMarkerAlt, FaLeaf, FaEdit, FaEye, FaTrash } from 'react-icons/fa';
 import { useApi } from '../../hooks/useApi';
 import { contractAPI, productAPI } from '../../services/api';
 import LoadingSpinner from '../common/LoadingSpinner';
 import ErrorBoundary from '../common/ErrorBoundary';
+import { toast } from 'react-hot-toast';
 
 // Utility functions
 const formatCurrency = (amount) => {
@@ -174,6 +175,7 @@ const MyProducts = ({ products }) => (
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
@@ -215,11 +217,72 @@ const MyProducts = ({ products }) => (
                     {product.availableQuantity > 0 ? 'In Stock' : 'Out of Stock'}
                   </span>
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <div className="flex justify-end space-x-2">
+                    <Link 
+                      to={`/products/edit/${product._id}`}
+                      className="text-blue-600 hover:text-blue-800 p-1 rounded-full hover:bg-blue-100 transition-colors"
+                      title="Edit Product"
+                    >
+                      <FaEdit className="w-4 h-4" />
+                      <span className="sr-only">Edit</span>
+                    </Link>
+                    <Link 
+                      to={`/products/${product._id}`}
+                      className="text-green-600 hover:text-green-800 p-1 rounded-full hover:bg-green-100 transition-colors"
+                      title="View Product"
+                    >
+                      <FaEye className="w-4 h-4" />
+                      <span className="sr-only">View</span>
+                    </Link>
+                    <button 
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete "${product.name}"?`)) {
+                          console.log("Deleting product with ID:", product._id);
+                          
+                          // Show loading toast
+                          const loadingToast = toast.loading('Deleting product...');
+                          
+                          productAPI.delete(product._id)
+                            .then((response) => {
+                              console.log("Delete product response:", response);
+                              
+                              // Check if the deletion was successful
+                              if (response.success === false) {
+                                throw new Error(response.message || 'Failed to delete product');
+                              }
+                              
+                              // Dismiss loading toast and show success
+                              toast.dismiss(loadingToast);
+                              toast.success('Product deleted successfully');
+                              
+                              // Refresh the page to update the product list
+                              setTimeout(() => {
+                                window.location.reload();
+                              }, 1000);
+                            })
+                            .catch(err => {
+                              console.error('Error deleting product:', err);
+                              
+                              // Dismiss loading toast and show error
+                              toast.dismiss(loadingToast);
+                              toast.error(err.message || 'Failed to delete product');
+                            });
+                        }
+                      }}
+                      className="text-red-600 hover:text-red-800 p-1 rounded-full hover:bg-red-100 transition-colors"
+                      title="Delete Product"
+                    >
+                      <FaTrash className="w-4 h-4" />
+                      <span className="sr-only">Delete</span>
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))
           ) : (
             <tr>
-              <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">
+              <td colSpan="6" className="px-6 py-4 text-center text-sm text-gray-500">
                 No products found. Add your first product to start receiving contract offers.
               </td>
             </tr>

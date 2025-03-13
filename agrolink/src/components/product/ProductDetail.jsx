@@ -28,21 +28,21 @@ const ProductDetail = () => {
         setLoading(true);
         const response = await productAPI.getById(id);
         
-        if (!response.data) {
+       
+        if (!response.success) {
           setError('Product not found');
           return;
         }
-        
-        setProduct(response.data);
+        setProduct(response.product);
         
         // Fetch similar products
-        if (response.data.category) {
+        if (response.product.category) {
           setLoadingSimilar(true);
-          const similarResponse = await productAPI.getByCategory(response.data.category);
+          const similarResponse = await productAPI.getByCategory(response.product.category);
           
           // Filter out current product and limit to 4 products
-          const filteredProducts = Array.isArray(similarResponse.data) 
-            ? similarResponse.data.filter(p => p._id !== id).slice(0, 4)
+          const filteredProducts = Array.isArray(similarResponse.product) 
+            ? similarResponse.product.filter(p => p._id !== id).slice(0, 4)
             : [];
             
           setSimilarProducts(filteredProducts);
@@ -152,7 +152,7 @@ const ProductDetail = () => {
                 <div className="aspect-w-1 aspect-h-1 w-full overflow-hidden rounded-lg bg-gray-200 mb-4">
                   {product.images && product.images.length > 0 ? (
                     <img
-                      src={product.images[activeImage]}
+                      src={product.images[activeImage].url}
                       alt={product.name}
                       className="h-full w-full object-cover object-center"
                     />
