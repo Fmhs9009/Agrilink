@@ -688,4 +688,34 @@ exports.getAllProductsDebug = catchAsyncErrors(async (req, res, next) => {
         console.error('Error in getAllProductsDebug:', error);
         return next(new ErrorHandler(error.message, 500));
     }
+});
+
+// Get products by category
+exports.getProductsByCategory = catchAsyncErrors(async (req, res, next) => {
+    try {
+        const category = req.params.category;
+        console.log("Fetching products for category:", category);
+        
+        if (!category) {
+            return next(new ErrorHandler('Category is required', 400));
+        }
+        
+        const products = await Product.find({ 
+            category: category,
+            status: 'active'
+        })
+        .populate('farmer', 'name email')
+        .sort({ createdAt: -1 });
+        
+        console.log(`Found ${products.length} products in category ${category}`);
+        
+        res.status(200).json({
+            success: true,
+            product: products,
+            count: products.length
+        });
+    } catch (error) {
+        console.error('Error in getProductsByCategory:', error);
+        return next(new ErrorHandler(error.message, 500));
+    }
 }); 

@@ -38,6 +38,7 @@ const Shop = lazy(() => import("./components/shop/Shop"));
 const ProductDetail = lazy(() => import("./components/product/ProductDetail"));
 const ProductManagement = lazy(() => import("./components/product/ProductManagement"));
 const ProductForm = lazy(() => import("./components/product/ProductForm"));
+const CategoryProducts = lazy(() => import("./components/product/CategoryProducts"));
 
 // Contract components
 const ContractRequests = lazy(() => import("./components/contract/ContractRequests"));
@@ -253,6 +254,10 @@ function App() {
                 </ProtectedRoute>
               } />
             </Route>
+            
+            {/* New routes */}
+            <Route path="/product/:id" element={<ProductDetail />} />
+            <Route path="/category/:category" element={<CategoryProducts />} />
           </Route>
           
           {/* 404 Route */}

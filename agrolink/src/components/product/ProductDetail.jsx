@@ -348,10 +348,12 @@ const ProductDetail = () => {
                       <span className="text-gray-600 mr-2">Name:</span>
                       <span className="font-medium">{getFarmerName()}</span>
                     </div>
+                    <br />
                     <div className="flex items-center">
                       <span className="text-gray-600 mr-2">Location:</span>
                       <span className="font-medium">{getFarmerLocation()}</span>
                     </div>
+                    <br />
                     {/* <div className="flex items-center">
                       <span className="text-gray-600 mr-2">Experience:</span>
                       <span className="font-medium">{getFarmerExperience()}</span>

@@ -342,6 +342,19 @@ export const productAPI = {
   getProductCategories: async () => {
     console.log("Calling getProductCategories API");
     return handleApiResponse(() => api.get('/products/categories'));
+  },
+
+  // Get products by category
+  getProductsByCategory: async (category) => {
+    try {
+      console.log(`Fetching products for category: ${category}`);
+      const response = await api.get(`/products/category/${category}`);
+      console.log('Products by category response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching products by category:', error);
+      throw error;
+    }
   }
 };
 
