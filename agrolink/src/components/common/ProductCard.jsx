@@ -93,7 +93,7 @@ const ProductCard = ({ product }) => {
         
         <div className="flex space-x-2">
           <Link
-            to={`/product/${_id}`}
+            to={`/products/${_id}`}
             className="flex-1 text-center bg-green-600 hover:bg-green-700 text-white py-2 rounded-md transition-colors flex items-center justify-center"
           >
             <FaShoppingCart className="mr-2" />

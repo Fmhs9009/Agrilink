@@ -336,6 +336,12 @@ export const productAPI = {
   getReviews: async (id) => {
     console.log("Calling getReviews API for ID:", id);
     return handleApiResponse(() => api.get(`/products/reviews/${id}`));
+  },
+  
+  // Get product categories
+  getProductCategories: async () => {
+    console.log("Calling getProductCategories API");
+    return handleApiResponse(() => api.get('/products/categories'));
   }
 };
 
@@ -525,6 +531,12 @@ export const userAPI = {
   // Change password
   changePassword: async (passwordData) => {
     return handleApiResponse(() => api.put('/users/password', passwordData));
+  },
+
+  // Get user by ID
+  getById: async (userId) => {
+    console.log("Fetching user details for ID:", userId);
+    return handleApiResponse(() => api.get(`/auth/user/${userId}`));
   }
 };
 
