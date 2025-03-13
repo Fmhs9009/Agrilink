@@ -63,6 +63,11 @@ const ProductDetail = () => {
         // console.log("Product data received:", response.product);
         setProduct(response.product);
         
+        // Set initial quantity to minimumOrderQuantity if available
+        if (response.product.minimumOrderQuantity) {
+          setQuantity(response.product.minimumOrderQuantity);
+        }
+        
         // Fetch farmer details if farmer ID is available
         if (response.product.farmer) {
           if (typeof response.product.farmer === 'string') {
@@ -112,8 +117,17 @@ const ProductDetail = () => {
   // Handle quantity change
   const handleQuantityChange = (e) => {
     const value = parseInt(e.target.value);
-    if (value > 0 && value <= (product?.availableQuantity || 0)) {
+    const minQuantity = product?.minimumOrderQuantity || 1;
+    const maxQuantity = product?.availableQuantity || 0;
+    
+    if (value >= minQuantity && value <= maxQuantity) {
       setQuantity(value);
+    } else if (value < minQuantity) {
+      setQuantity(minQuantity);
+      toast.error(`Minimum order quantity is ${minQuantity} ${product.unit}(s)`);
+    } else if (value > maxQuantity) {
+      setQuantity(maxQuantity);
+      toast.error(`Maximum available quantity is ${maxQuantity} ${product.unit}(s)`);
     }
   };
 
@@ -394,7 +408,7 @@ const ProductDetail = () => {
                     </label>
                     <div className="flex items-center">
                       <button 
-                        onClick={() => quantity > 1 && setQuantity(quantity - 1)}
+                        onClick={() => quantity > (product.minimumOrderQuantity || 1) && setQuantity(quantity - 1)}
                         className="bg-gray-200 px-3 py-2 rounded-l-md hover:bg-gray-300"
                       >
                         -
@@ -403,7 +417,7 @@ const ProductDetail = () => {
                         type="number"
                         id="quantity"
                         name="quantity"
-                        min={product.minOrderQuantity}
+                        min={product.minimumOrderQuantity || 1}
                         max={product.availableQuantity}
                         value={quantity}
                         onChange={handleQuantityChange}
@@ -417,6 +431,9 @@ const ProductDetail = () => {
                       </button>
                       <span className="ml-3 text-gray-500">{product.unit}(s)</span>
                     </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Minimum order: {product.minimumOrderQuantity || 1} {product.unit}(s)
+                    </p>
                   </div>
                 ) : (
                   <div className="mb-6">
@@ -607,15 +624,17 @@ const ProductDetail = () => {
                         <tr>
                           <td className="px-6 py-4 whitespace-nowrap bg-gray-50 text-sm font-medium text-gray-900">Harvest Date</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {product.harvestDate ? new Date(product.harvestDate).toLocaleDateString('en-IN') : 'Not specified'}
+                            {product.estimatedHarvestDate
+ ? new Date(product.estimatedHarvestDate
+).toLocaleDateString('en-IN') : 'Not specified'}
                           </td>
                         </tr>
-                        <tr>
+                        {/* <tr>
                           <td className="px-6 py-4 whitespace-nowrap bg-gray-50 text-sm font-medium text-gray-900">Shelf Life</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                             {product.shelfLife ? `${product.shelfLife} days` : 'Not specified'}
                           </td>
-                        </tr>
+                        </tr> */}
                         <tr>
                           <td className="px-6 py-4 whitespace-nowrap bg-gray-50 text-sm font-medium text-gray-900">Storage Instructions</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
@@ -974,13 +993,14 @@ const ProductDetail = () => {
                         type="number"
                         id="contractQuantity"
                         name="contractQuantity"
-                        min="1"
+                        min={product.minimumOrderQuantity || 1}
+                        max={product.availableQuantity}
                         defaultValue={quantity}
                         className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500"
                         required
                       />
                       <p className="mt-1 text-xs text-gray-500">
-                        Recommended minimum: {product.contractPreferences?.minQuantity || 100} {product.unit}
+                        Minimum order: {product.minimumOrderQuantity || 1} {product.unit}(s) | Maximum available: {product.availableQuantity} {product.unit}(s)
                       </p>
                     </div>
                     
