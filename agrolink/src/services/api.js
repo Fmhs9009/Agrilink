@@ -510,22 +510,44 @@ export const contractAPI = {
 export const orderAPI = {
   // Get all orders
   getAll: async (filters = {}) => {
+    console.log("Fetching all orders with filters:", filters);
     return handleApiResponse(() => api.get('/orders', { params: filters }));
   },
 
   // Get order by ID
   getById: async (id) => {
+    console.log("Fetching order details for ID:", id);
     return handleApiResponse(() => api.get(`/orders/${id}`));
   },
 
   // Create new order
   create: async (orderData) => {
+    console.log("Creating new order with data:", orderData);
     return handleApiResponse(() => api.post('/orders', orderData));
   },
 
   // Update order
   update: async (id, orderData) => {
+    console.log("Updating order ID:", id, "with data:", orderData);
     return handleApiResponse(() => api.put(`/orders/${id}`, orderData));
+  },
+  
+  // Get orders by customer
+  getByCustomer: async () => {
+    console.log("Fetching customer's orders");
+    return handleApiResponse(() => api.get('/orders/customer'));
+  },
+  
+  // Cancel order
+  cancelOrder: async (id, reason) => {
+    console.log("Cancelling order ID:", id, "with reason:", reason);
+    return handleApiResponse(() => api.put(`/orders/${id}/cancel`, { reason }));
+  },
+  
+  // Track order
+  trackOrder: async (id) => {
+    console.log("Tracking order ID:", id);
+    return handleApiResponse(() => api.get(`/orders/${id}/track`));
   }
 };
 
@@ -550,6 +572,24 @@ export const userAPI = {
   getById: async (userId) => {
     console.log("Fetching user details for ID:", userId);
     return handleApiResponse(() => api.get(`/auth/user/${userId}`));
+  },
+  
+  // Get saved products (wishlist)
+  getSavedProducts: async () => {
+    console.log("Fetching user's saved products");
+    return handleApiResponse(() => api.get('/users/saved-products'));
+  },
+  
+  // Add product to saved products (wishlist)
+  addToSavedProducts: async (productId) => {
+    console.log("Adding product to saved products:", productId);
+    return handleApiResponse(() => api.post('/users/saved-products', { productId }));
+  },
+  
+  // Remove product from saved products (wishlist)
+  removeFromSavedProducts: async (productId) => {
+    console.log("Removing product from saved products:", productId);
+    return handleApiResponse(() => api.delete(`/users/saved-products/${productId}`));
   }
 };
 

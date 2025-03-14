@@ -1,4 +1,4 @@
-import { createSlice } from "@reduxjs/toolkit";
+import { createSlice, createAction } from "@reduxjs/toolkit";
 import { toast } from "react-hot-toast";
 import authService from "../../services/auth/authService";
 import { AUTH_CONSTANTS } from "../../config/constants";
@@ -7,12 +7,16 @@ import { AUTH_CONSTANTS } from "../../config/constants";
 const initialState = {
   signupData: null,
   loginData: authService.getUser(),
-  loading: false,
+  user: authService.getUser(),
+  loading: true,
   error: null,
   isAuthenticated: authService.isAuthenticated(),
   rememberMe: localStorage.getItem('rememberMe') === 'true',
   lastActivity: Date.now()
 };
+
+// Create setLoading action
+export const setLoading = createAction('auth/setLoading');
 
 const authSlice = createSlice({
   name: "auth",
@@ -27,7 +31,14 @@ const authSlice = createSlice({
     },
     
     setUser: (state, action) => {
+      console.log('setUser action called with payload:', action.payload);
+      if (!action.payload) {
+        console.error('setUser called with empty payload');
+        return;
+      }
+      
       state.loginData = action.payload;
+      state.user = action.payload; // Ensure user is also set directly
       state.isAuthenticated = true;
       state.lastActivity = Date.now();
       // Auth service handles storage
@@ -39,10 +50,6 @@ const authSlice = createSlice({
       state.lastActivity = Date.now();
       // Auth service handles storage
       authService.setUser(state.loginData);
-    },
-    
-    setLoading: (state, action) => {
-      state.loading = action.payload;
     },
     
     setError: (state, action) => {
@@ -63,10 +70,12 @@ const authSlice = createSlice({
     },
     
     logout: (state) => {
+      console.log('Logout action called');
       // Reset state
       Object.assign(state, {
         signupData: null,
         loginData: null,
+        user: null,
         isAuthenticated: false,
         error: null,
         lastActivity: null
@@ -107,12 +116,17 @@ const authSlice = createSlice({
         toast.error("Session expired. Please login again.");
       }
     }
+  },
+  extraReducers: (builder) => {
+    // Add case for setLoading action
+    builder.addCase(setLoading, (state, action) => {
+      state.loading = action.payload;
+    });
   }
 });
 
 export const { 
   setSignupData, 
-  setLoading, 
   setUser,
   setAuthenticated,
   updateUserData, 

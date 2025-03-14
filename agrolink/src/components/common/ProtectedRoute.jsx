@@ -1,86 +1,64 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
-import authService from '../../services/auth/authService';
-import { ROUTES } from '../../config/constants';
-import LoadingSpinner from './LoadingSpinner';
 import { useSelector } from 'react-redux';
+import { ROUTES, ROLES } from '../../config/constants';
+import LoadingSpinner from './LoadingSpinner';
 
 /**
- * ProtectedRoute component that handles both authentication and role-based access control
- * @param {Object} props Component props
- * @param {React.ReactNode} props.children Child components to render if authorized
- * @param {string|string[]} [props.allowedRoles] Optional roles that are allowed to access this route
- * @param {string} [props.redirectPath] Path to redirect to if unauthorized (defaults to login)
- * @returns {React.ReactNode} Protected route component
+ * Protected route component that checks if user is authenticated
+ * and has the required role before rendering children
  */
-const ProtectedRoute = ({ 
-  children, 
-  allowedRoles = [], 
-  redirectPath = '/auth/login'
-}) => {
-  const [isChecking, setIsChecking] = useState(true);
-  const [isAllowed, setIsAllowed] = useState(false);
+const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const location = useLocation();
+  const { isAuthenticated, user, loading } = useSelector((state) => state.auth);
   
-  // Get authentication state from Redux store
-  const { isAuthenticated, loginData } = useSelector((state) => state.auth);
-
-  useEffect(() => {
-    const checkAccess = async () => {
-      try {
-        // First check if user is authenticated using Redux state
-        if (!isAuthenticated || !loginData) {
-          console.log('Not authenticated according to Redux state');
-          toast.error('Please login to continue');
-          setIsAllowed(false);
-          setIsChecking(false);
-          return;
-        }
-
-        // If roles are specified, check if user has required role
-        if (allowedRoles.length > 0) {
-          const hasRequiredRole = authService.hasRole(allowedRoles);
-       //   console.log('Role check:', { allowedRoles, hasRequiredRole });
-          
-          if (!hasRequiredRole) {
-            toast.error("You don't have permission to access this page");
-            setIsAllowed(false);
-            setIsChecking(false);
-            return;
-          }
-        }
-
-        // User is authenticated and has required role (if any)
-      //  console.log('Access granted');
-        setIsAllowed(true);
-      } catch (error) {
-        console.error('Access check failed:', error);
-        toast.error('Authentication check failed');
-        setIsAllowed(false);
-      } finally {
-        setIsChecking(false);
-      }
-    };
-
-    checkAccess();
-  }, [allowedRoles, location.pathname, isAuthenticated, loginData]);
-
-  if (isChecking) {
+  console.log("ProtectedRoute: Auth state:", { isAuthenticated, loading, hasUser: !!user });
+  
+  // If auth state is still loading, show a spinner
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner message="Verifying access..." />
+      <div className="flex justify-center items-center min-h-screen">
+        <LoadingSpinner message="Verifying authentication..." />
       </div>
     );
   }
-
-  if (!isAllowed) {
-    // Store the attempted URL for redirect after login
-    const returnUrl = encodeURIComponent(location.pathname + location.search);
-    const loginUrl = `${redirectPath}?returnUrl=${returnUrl}`;
-    return <Navigate to={loginUrl} replace />;
+  
+  // If not authenticated, redirect to login
+  if (!isAuthenticated) {
+    console.log("ProtectedRoute: Not authenticated, redirecting to login");
+    return <Navigate to={ROUTES.LOGIN} state={{ from: location }} replace />;
   }
-
+  
+  // If user object is not available yet, show a spinner
+  if (!user) {
+    console.log("ProtectedRoute: Authenticated but no user data");
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="text-center">
+          <LoadingSpinner message="Loading user data..." />
+          <p className="mt-4 text-red-600">If this persists, please try logging out and back in.</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // If roles are specified and user doesn't have required role, redirect to home
+  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    console.log("ProtectedRoute: User doesn't have required role", { 
+      userRole: user.role, 
+      allowedRoles 
+    });
+    return <Navigate to={ROUTES.HOME} replace />;
+  }
+  
+  console.log("ProtectedRoute: Access granted", { userRole: user.role });
+  
+  // If children is a function, call it with user data
+  if (typeof children === 'function') {
+    return children({ user });
+  }
+  
+  // Otherwise, render children normally
   return children;
 };
 
