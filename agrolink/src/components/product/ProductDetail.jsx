@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { toast } from 'react-hot-toast';
 import { FaLeaf, FaCheck, FaSeedling, FaUser, FaWarehouse, FaCalendarAlt, FaHandshake, FaStar, FaMapMarkerAlt, FaTractor, FaArrowLeft, FaImages, FaShoppingCart, FaInfoCircle, FaChartLine, FaHistory, FaClipboardList, FaThumbsUp, FaAward, FaSun, FaMoon, FaWater, FaSeedling as FaSeed, FaRulerVertical, FaEnvelope, FaPhone } from 'react-icons/fa';
 import { productAPI, userAPI } from '../../services/api';
+import { ROLES } from '../../config/constants';
 import LoadingSpinner from '../common/LoadingSpinner';
 import ErrorBoundary from '../common/ErrorBoundary';
 
@@ -135,7 +136,13 @@ const ProductDetail = () => {
   const handleContractRequest = () => {
     if (!user) {
       toast.error('Please login to request a contract');
-      navigate('/login');
+      navigate('/auth/login');
+      return;
+    }
+    
+    // Check if user is a farmer
+    if (user.accountType === ROLES.FARMER) {
+      toast.error('Farmers cannot initiate contracts. Only customers can request contracts.');
       return;
     }
     
@@ -450,13 +457,13 @@ const ProductDetail = () => {
                 <div className="flex flex-wrap gap-4">
                   <button
                     onClick={handleContractRequest}
-                    disabled={product.availableQuantity <= 0}
+                    disabled={product.availableQuantity <= 0 || (user && user.accountType === ROLES.FARMER)}
                     className={`flex-1 flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${
-                      product.availableQuantity <= 0 ? 'opacity-50 cursor-not-allowed' : ''
+                      product.availableQuantity <= 0 || (user && user.accountType === ROLES.FARMER) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >
                     <FaHandshake className="mr-2" />
-                    Request Contract
+                    {user && user.accountType === ROLES.FARMER ? 'Farmers Cannot Request Contracts' : 'Request Contract'}
                   </button>
                   
                   <button

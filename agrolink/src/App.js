@@ -8,15 +8,7 @@ import { toast } from 'react-hot-toast';
 import { ROUTES, ROLES, TOAST_CONFIG, AUTH_CONSTANTS } from './config/constants';
 import { setStore } from './services/api';
 import authService from './services/auth/authService';
-import { 
-  setAuthenticated, 
-  setUser, 
-  logout, 
-  refreshActivity, 
-  checkSession, 
-  setRememberMe,
-  setLoading
-} from "./reducer/Slice/authSlice";
+import { setAuthenticated, setUser, logout, refreshActivity, checkSession, setRememberMe } from "./reducer/Slice/authSlice";
 
 // Import layout components
 import Layout from "./components/layout/Layout";
@@ -40,7 +32,6 @@ const Home = lazy(() => import("./components/home/Home"));
 const AboutUs = lazy(() => import("./components/pages/AboutUs"));
 const ContactUs = lazy(() => import("./components/pages/ContactUs"));
 const FarmerDashboard = lazy(() => import("./components/dashboard/FarmerDashboard"));
-const CustomerDashboard = lazy(() => import("./components/dashboard/CustomerDashboard"));
 
 // Shop components
 const Shop = lazy(() => import("./components/shop/Shop"));
@@ -53,47 +44,12 @@ const CategoryProducts = lazy(() => import("./components/product/CategoryProduct
 const ContractRequests = lazy(() => import("./components/contract/ContractRequests"));
 const ContractManagement = lazy(() => import("./components/contract/ContractManagement"));
 
-// Order components
-const OrderHistory = lazy(() => import("./components/order/OrderHistory"));
-const SavedProducts = lazy(() => import("./components/product/SavedProducts"));
-
 // Loading fallback component
 const PageLoader = () => (
   <div className="flex justify-center items-center min-h-screen">
     <LoadingSpinner message="Loading page..." />
   </div>
 );
-
-// Add this component before the App function
-const DashboardRouter = () => {
-  const { user, loading } = useSelector((state) => state.auth);
-  
-  // If still loading, show loading spinner
-  if (loading) {
-    return <div className="flex justify-center items-center min-h-screen">
-      <LoadingSpinner message="Loading authentication data..." />
-    </div>;
-  }
-  
-  // Check if user exists and has a role property
-  if (!user) {
-    console.log("DashboardRouter: No user data found");
-    return <div className="flex justify-center items-center min-h-screen">
-      <div className="text-center">
-        <LoadingSpinner message="Loading user data..." />
-        <p className="mt-4 text-red-600">If this persists, please try logging out and back in.</p>
-      </div>
-    </div>;
-  }
-  
-  console.log("DashboardRouter: User role:", user.accountType);
-  
-  if (user.accountType === ROLES.FARMER) {
-    return <FarmerDashboard />;
-  } else {
-    return <CustomerDashboard />;
-  }
-};
 
 function App() {
   const dispatch = useDispatch();
@@ -108,8 +64,6 @@ function App() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        dispatch(setLoading(true));
-        
         console.log('Checking authentication status...');
         console.log('Current auth state:', { isAuthenticated, loginData });
         
@@ -125,8 +79,6 @@ function App() {
             
             // Get user data from appropriate storage
             const userData = authService.getUser();
-            console.log('User data from storage:', userData);
-            
             if (userData) {
               console.log('User data found:', userData);
               dispatch(setUser(userData));
@@ -137,17 +89,6 @@ function App() {
               console.log('Remember me state set to:', isRemembered);
             } else {
               console.log('No user data found despite token existing');
-              // If we have a token but no user data, we should log out
-              dispatch(logout());
-            }
-          } else {
-            console.log('Already authenticated in Redux, checking user data');
-            const userData = authService.getUser();
-            console.log('User data check:', userData);
-            
-            if (!loginData && userData) {
-              console.log('No user in Redux but found in storage, updating');
-              dispatch(setUser(userData));
             }
           }
         } else {
@@ -163,11 +104,6 @@ function App() {
         }
       } catch (error) {
         console.error('Auth check failed:', error);
-        // On error, we should set loading to false and possibly log out
-        dispatch(logout());
-      } finally {
-        console.log('Auth check complete, setting loading to false');
-        dispatch(setLoading(false));
       }
     };
 
@@ -253,7 +189,7 @@ function App() {
             <Route path="dashboard" element={
               <ProtectedRoute>
                 <Suspense fallback={<PageLoader />}>
-                  <DashboardRouter />
+                  <FarmerDashboard />
                 </Suspense>
               </ProtectedRoute>
             } />
@@ -318,22 +254,6 @@ function App() {
                 </ProtectedRoute>
               } />
             </Route>
-            
-            {/* Order Routes */}
-            <Route path="orders/history" element={
-              <ProtectedRoute>
-                <Suspense fallback={<PageLoader />}>
-                  <OrderHistory />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="saved-products" element={
-              <ProtectedRoute>
-                <Suspense fallback={<PageLoader />}>
-                  <SavedProducts />
-                </Suspense>
-              </ProtectedRoute>
-            } />
             
             {/* New routes */}
             <Route path="/product/:id" element={<ProductDetail />} />
