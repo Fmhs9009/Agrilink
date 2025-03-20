@@ -3,19 +3,23 @@ const mailSender = require('./mailSender');
 /**
  * Send an email using the mailSender utility
  * @param {Object} options - Email options
- * @param {string} options.email - Recipient email
- * @param {string} options.subject - Email subject
- * @param {string} options.message - Email body/content
+ * @param {string} options.email - Recipient email (or options.to)
+ * @param {string} options.subject - Email subject (or options.title)
+ * @param {string} options.message - Email body/content (or options.text or options.html)
  * @returns {Promise} - Result of the email sending operation
  */
 const sendEmail = async (options) => {
   try {
-    const { email, subject, message } = options;
+    // Handle different property naming conventions
+    const email = options.email || options.to;
+    const subject = options.subject || options.title;
+    const message = options.message || options.text || options.html;
     
     if (!email || !subject || !message) {
       throw new Error('Email, subject, and message are required');
     }
     
+    // mailSender expects email, title, body - not an options object
     const result = await mailSender(email, subject, message);
     return result;
   } catch (error) {

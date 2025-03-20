@@ -1,76 +1,51 @@
 const express = require('express');
 const router = express.Router();
 const { verifyToken, isFarmer, isBuyer } = require('../Middleware/auth');
+const contractController = require('../Controller/contractController');
 
 // This file will be implemented with actual controller functions
 // For now, we'll define the route structure
 
 // Public routes
-router.get('/', (req, res) => {
-  res.json({ message: "Contract routes API is working" });
-});
+router.get('/', contractController.getAllContracts);
 
 // Get contract by ID
-router.get('/:id', verifyToken, async (req, res) => {
-  try {
-    res.json({ message: `Get contract with ID: ${req.params.id}` });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+router.get('/:id', verifyToken, contractController.getContractById);
 
 // Create a new contract request
-router.post('/request', verifyToken, async (req, res) => {
-  try {
-    res.json({ message: "Contract request created successfully" });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+router.post('/request', verifyToken, contractController.createContractRequest);
 
 // Get contracts for a farmer
-router.get('/farmer/contracts', verifyToken, isFarmer, async (req, res) => {
-  try {
-    res.json({ message: "Farmer contracts retrieved successfully" });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+router.get('/farmer/contracts', verifyToken, isFarmer, contractController.getFarmerContracts);
 
 // Get contracts for a buyer
-router.get('/buyer/contracts', verifyToken, isBuyer, async (req, res) => {
-  try {
-    res.json({ message: "Buyer contracts retrieved successfully" });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+router.get('/buyer/contracts', verifyToken, isBuyer, contractController.getBuyerContracts);
 
 // Update contract status
-router.put('/:id/status', verifyToken, async (req, res) => {
-  try {
-    res.json({ message: `Updated status for contract ID: ${req.params.id}` });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+router.put('/:id/status', verifyToken, contractController.updateContractStatus);
 
 // Add progress update to contract
-router.post('/:id/progress', verifyToken, isFarmer, async (req, res) => {
-  try {
-    res.json({ message: `Added progress update to contract ID: ${req.params.id}` });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+router.post('/:id/progress', verifyToken, isFarmer, contractController.addProgressUpdate);
 
 // Negotiate contract terms
-router.post('/:id/negotiate', verifyToken, async (req, res) => {
-  try {
-    res.json({ message: `Negotiation added to contract ID: ${req.params.id}` });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+router.post('/:id/negotiate', verifyToken, contractController.negotiateContract);
+
+// Get contract details
+router.get('/:id/details', verifyToken, contractController.getContractDetails);
+
+// Generate contract document
+router.get('/:id/document', verifyToken, contractController.generateContractDocument);
+
+// Get contract statistics
+router.get('/stats/overview', verifyToken, contractController.getContractStatistics);
+
+// Get all contracts for the logged-in user
+router.get('/user/all', verifyToken, contractController.getContracts);
+
+// Submit a counter offer for a contract
+router.post('/:id/counter-offer', verifyToken, contractController.submitCounterOffer);
+
+// Get contract statistics
+router.get('/stats/detailed', verifyToken, contractController.getContractStats);
 
 module.exports = router; 

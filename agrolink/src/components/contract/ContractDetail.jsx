@@ -40,7 +40,7 @@ const ContractDetail = () => {
   const fetchContractById = useCallback(async () => {
     try {
       setIsLoading(true);
-      const data = await api.get(`/api/contract-requests/${id}`);
+      const data = await api.get(`/contracts/${id}`);
       setContract(data);
     } catch (error) {
       toast.error(`Error fetching contract: ${error.message}`);
@@ -90,7 +90,7 @@ const ContractDetail = () => {
 
   const handleDownloadPDF = async () => {
     try {
-      await api.download(`/api/contract-requests/${id}/pdf`, `contract-${id}.pdf`);
+      await api.download(`/contracts/${id}/pdf`, `contract-${id}.pdf`);
       toast.success('Contract PDF downloaded successfully');
     } catch (error) {
       toast.error(`Failed to download PDF: ${error.message}`);
@@ -103,7 +103,7 @@ const ContractDetail = () => {
         setCancelLoading(true);
         await dispatch(cancelContractRequest(id)).unwrap();
         toast.success('Contract request cancelled successfully');
-        navigate('/contract-requests');
+        navigate('/contracts');
       } catch (error) {
         toast.error(`Failed to cancel contract: ${error.message}`);
       } finally {
@@ -123,7 +123,7 @@ const ContractDetail = () => {
         <h2 className="text-xl font-semibold text-gray-800 mb-2">Error Loading Contract</h2>
         <p className="text-red-500 mb-4">{error}</p>
         <Link 
-          to="/contract-requests" 
+          to="/contracts" 
           className="text-green-600 hover:underline mt-4 inline-block"
           aria-label="Go back to contract requests"
         >
@@ -140,7 +140,7 @@ const ContractDetail = () => {
         <h2 className="text-xl font-semibold text-gray-800 mb-2">Contract Not Found</h2>
         <p className="text-gray-600 mb-4">The contract you're looking for doesn't exist or you don't have permission to view it.</p>
         <Link 
-          to="/contract-requests" 
+          to="/contracts" 
           className="text-green-600 hover:underline mt-4 inline-block"
           aria-label="Go back to contract requests"
         >
@@ -213,8 +213,8 @@ const ContractDetail = () => {
             <div className="flex items-start">
               <FaCalendarAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
-                <p className="font-medium">Requested Harvest Date</p>
-                <p>{new Date(contract.requestedHarvestDate).toLocaleDateString()}</p>
+                <p className="font-medium">Requested Delivery Date</p>
+                <p>{new Date(contract.requestedDeliveryDate).toLocaleDateString()}</p>
               </div>
             </div>
 
@@ -407,7 +407,7 @@ const ContractDetail = () => {
       {/* Action Buttons */}
       <div className="flex justify-between items-center mt-8 print:hidden">
         <Link
-          to="/contract-requests"
+          to="/contracts"
           className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
           aria-label="Go back to all contracts"
         >

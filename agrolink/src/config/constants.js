@@ -13,7 +13,7 @@ export const API_CONFIG = {
 export const ROLES = {
   ADMIN: 'admin',
   FARMER: 'farmer',
-  BUYER: 'buyer'
+  BUYER: 'customer'
 };
 
 // Authentication Constants

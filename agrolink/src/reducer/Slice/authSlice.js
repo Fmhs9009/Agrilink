@@ -118,7 +118,6 @@ const authSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
-    // Add case for setLoading action
     builder.addCase(setLoading, (state, action) => {
       state.loading = action.payload;
     });

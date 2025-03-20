@@ -18,7 +18,7 @@ export const fetchContractRequests = createAsyncThunk(
   'contractRequests/fetchAll',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get('/api/contract-requests');
+      const response = await api.get('/contracts');
       return response.data;
     } catch (error) {
       const errorMessage = error.response?.data?.message || 'Failed to fetch contract requests';
@@ -32,7 +32,7 @@ export const submitContractRequest = createAsyncThunk(
   'contractRequests/submit',
   async (contractRequest, { rejectWithValue }) => {
     try {
-      const response = await api.post('/api/contract-requests', contractRequest);
+      const response = await api.post('/contracts/request', contractRequest);
       toast.success('Contract request submitted successfully');
       return response.data;
     } catch (error) {
@@ -47,7 +47,7 @@ export const updateContractRequest = createAsyncThunk(
   'contractRequests/update',
   async ({ id, data }, { rejectWithValue }) => {
     try {
-      const response = await api.put(`/api/contract-requests/${id}`, data);
+      const response = await api.put(`/contracts/${id}`, data);
       toast.success('Contract request updated successfully');
       return response.data;
     } catch (error) {
@@ -62,7 +62,7 @@ export const cancelContractRequest = createAsyncThunk(
   'contractRequests/cancel',
   async (id, { rejectWithValue }) => {
     try {
-      await api.delete(`/api/contract-requests/${id}`);
+      await api.delete(`/contracts/${id}`);
       toast.success('Contract request cancelled successfully');
       return id;
     } catch (error) {

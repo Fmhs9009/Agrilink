@@ -5,6 +5,9 @@ const ErrorHandler = require('../utils/errorHandler');
 const catchAsyncErrors = require('../middleware/catchAsyncErrors');
 const { cloudinary } = require('../config/cloudinary');
 const fs = require('fs');
+const Notification = require('../Model/Notification');
+const { sendEmail } = require('../utils/emailService');
+const mongoose = require('mongoose');
 
 // Get all contracts (with filtering)
 exports.getAllContracts = catchAsyncErrors(async (req, res, next) => {
@@ -58,6 +61,9 @@ exports.getContractById = catchAsyncErrors(async (req, res, next) => {
 // Create a new contract request
 exports.createContractRequest = catchAsyncErrors(async (req, res, next) => {
     try {
+        // console.log('Creating contract request. User:', req.user ? req.user._id : 'No user');
+        // console.log('Request body:', req.body);
+        console.log("ssssssssssssssssssssssssssssssssssssssssssssssssssssss")
         const {
             cropId,
             farmerId,
@@ -66,24 +72,29 @@ exports.createContractRequest = catchAsyncErrors(async (req, res, next) => {
             pricePerUnit,
             expectedHarvestDate,
             deliveryDate,
+            deliveryFrequency,
+            paymentTerms,
             qualityRequirements,
             specialRequirements
         } = req.body;
         
         // Validate required fields
-        if (!cropId || !farmerId || !quantity || !unit || !pricePerUnit || !expectedHarvestDate || !deliveryDate || !qualityRequirements) {
+        if (!cropId || !farmerId || !quantity || !unit || !pricePerUnit) {
+            console.log('Missing required fields');
             return next(new ErrorHandler('Please provide all required fields', 400));
         }
         
         // Check if crop exists
         const crop = await Product.findById(cropId);
         if (!crop) {
+            console.log('Crop not found:', cropId);
             return next(new ErrorHandler('Crop not found', 404));
         }
         
         // Check if farmer exists
         const farmer = await User.findById(farmerId);
         if (!farmer) {
+            console.log('Farmer not found:', farmerId);
             return next(new ErrorHandler('Farmer not found', 404));
         }
         
@@ -99,20 +110,113 @@ exports.createContractRequest = catchAsyncErrors(async (req, res, next) => {
             unit,
             pricePerUnit,
             totalAmount,
-            expectedHarvestDate,
-            deliveryDate,
+            expectedHarvestDate: expectedHarvestDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            deliveryDate: deliveryDate || new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
+            deliveryFrequency,
+            paymentTerms,
             qualityRequirements,
             specialRequirements,
-            status: 'requested'
+            status: 'requested',
+            createdAt: Date.now()
         });
         
-        res.status(201).json({
+        console.log('Contract created:', contract._id);
+        
+        // Get product and farmer details for notification
+        const product = await Product.findById(cropId);
+        const buyer = await User.findById(req.user.id);
+
+        if (!product || !farmer) {
+            return res.status(404).json({
+                success: false,
+                message: 'Product or farmer not found'
+            });
+        }
+
+        // Create notification for farmer
+        const notification = new Notification({
+            recipient: farmerId,
+            type: 'contract_request',
+            title: 'New Contract Request',
+            message: `${buyer.name} has requested a contract for ${quantity} ${unit} of ${product.name}`,
+            data: {
+                contractId: contract._id,
+                productId: cropId,
+                buyerId: req.user.id
+            },
+            isRead: false,
+            createdAt: Date.now()
+        });
+
+        await notification.save();
+        console.log('Notification saved for farmer:', farmerId);
+
+        try {
+            // Send email notification to farmer
+            console.log('Attempting to send email to farmer:', farmer.email);
+            
+            const emailData = {
+                to: farmer.email,
+                subject: 'New Contract Request on AgroLink',
+                text: `Dear ${farmer.Name},\n\nYou have received a new contract request from ${buyer.Name} for ${quantity} ${unit} of ${product.name}.\n\nPlease login to your AgroLink account to view and respond to this request.\n\nBest regards,\nThe AgroLink Team`,
+                html: `
+                    <h2>New Contract Request</h2>
+                    <p>Dear ${farmer.Name},</p>
+                    <p>You have received a new contract request from <strong>${buyer.Name}</strong> for <strong>${quantity} ${unit}</strong> of <strong>${product.name}</strong>.</p>
+                    <p>Contract Details:</p>
+                    <ul>
+                        <li>Product: ${product.name}</li>
+                        <li>Quantity: ${quantity} ${unit}</li>
+                        <li>Price per Unit: ₹${pricePerUnit}</li>
+                        <li>Total Amount: ₹${totalAmount}</li>
+                        <li>Delivery Date: ${new Date(deliveryDate).toLocaleDateString()}</li>
+                        <li>Payment Terms: ${paymentTerms ? JSON.stringify(paymentTerms) : 'Standard'}</li>
+                    </ul>
+                    <p>Please <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard">login to your AgroLink account</a> to view and respond to this request.</p>
+                    <p>Best regards,<br>The AgroLink Team</p>
+                `
+            };
+            
+            console.log('Email data prepared:', { to: emailData.to, subject: emailData.subject });
+            
+            await sendEmail(emailData);
+            console.log('Email sent successfully to farmer');
+        } catch (emailError) {
+            // Log the error but don't fail the contract creation
+            console.error('Error sending email notification:', emailError);
+            // We'll continue with the response even if email fails
+        }
+
+        // Return success response with contract details
+        return res.status(201).json({
             success: true,
-            message: 'Contract request created successfully',
-            contract
+            message: 'Contract request submitted successfully',
+            contract: {
+                _id: contract._id,
+                crop: {
+                    _id: product._id,
+                    name: product.name,
+                    image: product.images && product.images.length > 0 ? product.images[0] : null
+                },
+                farmer: {
+                    _id: farmer._id,
+                    name: farmer.name
+                },
+                quantity,
+                unit,
+                pricePerUnit,
+                totalAmount,
+                status: contract.status,
+                createdAt: contract.createdAt
+            }
         });
     } catch (error) {
-        return next(new ErrorHandler(error.message, 500));
+        console.error('Error creating contract request:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to create contract request',
+            error: error.message
+        });
     }
 });
 
@@ -445,5 +549,312 @@ exports.getContractStatistics = catchAsyncErrors(async (req, res, next) => {
         return next(new ErrorHandler(error.message, 500));
     }
 });
+
+// Get all contracts for the logged-in user
+exports.getContracts = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userRole = req.user.accountType;
+        
+        let query = {};
+        
+        // Filter contracts based on user role
+        if (userRole === 'farmer') {
+            query.farmer = userId;
+        } else if (userRole === 'buyer') {
+            query.buyer = userId;
+        } else {
+            // Admin can see all contracts
+        }
+        
+        // Apply filters if provided
+        const { status, sortBy, limit = 10, page = 1 } = req.query;
+        
+        if (status) {
+            query.status = status;
+        }
+        
+        // Set up sorting
+        let sort = {};
+        if (sortBy === 'newest') {
+            sort = { createdAt: -1 };
+        } else if (sortBy === 'oldest') {
+            sort = { createdAt: 1 };
+        } else if (sortBy === 'amount-high') {
+            sort = { totalAmount: -1 };
+        } else if (sortBy === 'amount-low') {
+            sort = { totalAmount: 1 };
+        } else {
+            // Default sort by newest
+            sort = { createdAt: -1 };
+        }
+        
+        // Calculate pagination
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        
+        // Fetch contracts with populated references
+        const contracts = await Contract.find(query)
+            .populate('crop', 'name images price unit category')
+            .populate('farmer', 'name email phone location')
+            .populate('buyer', 'name email phone')
+            .sort(sort)
+            .skip(skip)
+            .limit(parseInt(limit));
+        
+        // Get total count for pagination
+        const totalContracts = await Contract.countDocuments(query);
+        
+        return res.status(200).json({
+            success: true,
+            count: contracts.length,
+            total: totalContracts,
+            totalPages: Math.ceil(totalContracts / parseInt(limit)),
+            currentPage: parseInt(page),
+            contracts
+        });
+    } catch (error) {
+        console.error('Error fetching contracts:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch contracts',
+            error: error.message
+        });
+    }
+};
+
+// Submit a counter offer for a contract
+exports.submitCounterOffer = async (req, res) => {
+    try {
+        const contractId = req.params.id;
+        const { 
+            quantity, 
+            pricePerUnit, 
+            deliveryDate, 
+            paymentTerms, 
+            remarks 
+        } = req.body;
+        
+        // Find contract
+        const contract = await Contract.findById(contractId);
+        
+        if (!contract) {
+            return res.status(404).json({
+                success: false,
+                message: 'Contract not found'
+            });
+        }
+        
+        // Check authorization
+        const userId = req.user.id;
+        const userRole = req.user.accountType;
+        
+        // Both farmer and buyer can submit counter offers
+        if (contract.farmer.toString() !== userId && contract.buyer.toString() !== userId) {
+            return res.status(403).json({
+                success: false,
+                message: 'You are not authorized to submit a counter offer for this contract'
+            });
+        }
+        
+        // Create counter offer
+        const counterOffer = {
+            offeredBy: userId,
+            offerType: contract.farmer.toString() === userId ? 'farmer' : 'buyer',
+            quantity: quantity || contract.quantity,
+            pricePerUnit: pricePerUnit || contract.pricePerUnit,
+            totalAmount: (quantity || contract.quantity) * (pricePerUnit || contract.pricePerUnit),
+            deliveryDate: deliveryDate || contract.deliveryDate,
+            paymentTerms: paymentTerms || contract.paymentTerms,
+            remarks,
+            timestamp: Date.now()
+        };
+        
+        // Add counter offer to contract
+        contract.counterOffers = contract.counterOffers || [];
+        contract.counterOffers.push(counterOffer);
+        
+        // Update contract status to negotiating
+        contract.status = 'negotiating';
+        contract.statusHistory = contract.statusHistory || [];
+        contract.statusHistory.push({
+            status: 'negotiating',
+            changedBy: userId,
+            remarks: 'Counter offer submitted',
+            timestamp: Date.now()
+        });
+        
+        // Save contract
+        await contract.save();
+        
+        // Get user details for notification
+        const farmer = await User.findById(contract.farmer);
+        const buyer = await User.findById(contract.buyer);
+        const product = await Product.findById(contract.crop);
+        
+        // Determine recipient
+        const recipient = contract.farmer.toString() === userId ? contract.buyer : contract.farmer;
+        const senderName = contract.farmer.toString() === userId ? farmer.name : buyer.name;
+        const recipientUser = contract.farmer.toString() === userId ? buyer : farmer;
+        
+        // Create notification
+        const notification = new Notification({
+            recipient,
+            type: 'contract_counter_offer',
+            title: 'New Counter Offer',
+            message: `${senderName} has submitted a counter offer for ${product.name}`,
+            data: {
+                contractId: contract._id,
+                productId: contract.crop,
+                counterOfferId: contract.counterOffers[contract.counterOffers.length - 1]._id
+            },
+            isRead: false,
+            createdAt: Date.now()
+        });
+        
+        await notification.save();
+        
+        try {
+            // Send email notification
+            console.log('Attempting to send counter offer email to:', recipientUser.email);
+            
+            const emailData = {
+                to: recipientUser.email,
+                subject: 'New Counter Offer on AgroLink',
+                text: `Dear ${recipientUser.Name},\n\n${senderName} has submitted a counter offer for ${product.name}.\n\nPlease login to your AgroLink account to view and respond to this offer.\n\nBest regards,\nThe AgroLink Team`,
+                html: `
+                    <h2>New Counter Offer</h2>
+                    <p>Dear ${recipientUser.Name},</p>
+                    
+                    <p><strong>${senderName}</strong> has submitted a counter offer for <strong>${product.name}</strong>.</p>
+                    <p>Counter Offer Details:</p>
+                    <ul>
+                        <li>Product: ${product.name}</li>
+                        <li>Quantity: ${counterOffer.quantity} ${contract.unit}</li>
+                        <li>Price per Unit: ₹${counterOffer.pricePerUnit}</li>
+                        <li>Total Amount: ₹${counterOffer.totalAmount}</li>
+                        <li>Delivery Date: ${new Date(counterOffer.deliveryDate).toLocaleDateString()}</li>
+                        <li>Payment Terms: ${typeof counterOffer.paymentTerms === 'object' ? JSON.stringify(counterOffer.paymentTerms) : counterOffer.paymentTerms}</li>
+                    </ul>
+                    ${remarks ? `<p>Remarks: ${remarks}</p>` : ''}
+                    <p>Please <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contract._id}">login to your AgroLink account</a> to view and respond to this offer.</p>
+                    <p>Best regards,<br>The AgroLink Team</p>
+                `
+            };
+            
+            console.log('Counter offer email data prepared');
+            await sendEmail(emailData);
+            console.log('Counter offer email sent successfully');
+        } catch (emailError) {
+            // Log the error but don't fail the contract creation
+            console.error('Error sending counter offer email notification:', emailError);
+            // We'll continue with the response even if email fails
+        }
+        
+        return res.status(200).json({
+            success: true,
+            message: 'Counter offer submitted successfully',
+            contract
+        });
+    } catch (error) {
+        console.error('Error submitting counter offer:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to submit counter offer',
+            error: error.message
+        });
+    }
+};
+
+// Get contract statistics
+exports.getContractStats = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userRole = req.user.accountType;
+        
+        let query = {};
+        
+        // Filter contracts based on user role
+        if (userRole === 'farmer') {
+            query.farmer = userId;
+        } else if (userRole === 'buyer') {
+            query.buyer = userId;
+        }
+        
+        // Get counts by status
+        const pendingCount = await Contract.countDocuments({ ...query, status: 'pending' });
+        const acceptedCount = await Contract.countDocuments({ ...query, status: 'accepted' });
+        const rejectedCount = await Contract.countDocuments({ ...query, status: 'rejected' });
+        const completedCount = await Contract.countDocuments({ ...query, status: 'completed' });
+        const cancelledCount = await Contract.countDocuments({ ...query, status: 'cancelled' });
+        const negotiatingCount = await Contract.countDocuments({ ...query, status: 'negotiating' });
+        
+        // Get total value of contracts
+        const totalValuePipeline = [
+            { $match: { ...query, status: { $in: ['accepted', 'completed'] } } },
+            { $group: { _id: null, totalValue: { $sum: '$totalAmount' } } }
+        ];
+        
+        const totalValueResult = await Contract.aggregate(totalValuePipeline);
+        const totalValue = totalValueResult.length > 0 ? totalValueResult[0].totalValue : 0;
+        
+        // Get monthly contract counts for the last 6 months
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        
+        const monthlyStatsPipeline = [
+            { 
+                $match: { 
+                    ...query, 
+                    createdAt: { $gte: sixMonthsAgo } 
+                } 
+            },
+            {
+                $group: {
+                    _id: { 
+                        year: { $year: '$createdAt' },
+                        month: { $month: '$createdAt' }
+                    },
+                    count: { $sum: 1 },
+                    value: { $sum: '$totalAmount' }
+                }
+            },
+            { $sort: { '_id.year': 1, '_id.month': 1 } }
+        ];
+        
+        const monthlyStats = await Contract.aggregate(monthlyStatsPipeline);
+        
+        // Format monthly stats
+        const formattedMonthlyStats = monthlyStats.map(stat => ({
+            year: stat._id.year,
+            month: stat._id.month,
+            count: stat.count,
+            value: stat.value
+        }));
+        
+        return res.status(200).json({
+            success: true,
+            stats: {
+                counts: {
+                    pending: pendingCount,
+                    accepted: acceptedCount,
+                    rejected: rejectedCount,
+                    completed: completedCount,
+                    cancelled: cancelledCount,
+                    negotiating: negotiatingCount,
+                    total: pendingCount + acceptedCount + rejectedCount + completedCount + cancelledCount + negotiatingCount
+                },
+                totalValue,
+                monthlyStats: formattedMonthlyStats
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching contract stats:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch contract statistics',
+            error: error.message
+        });
+    }
+};
 
 module.exports = exports; 

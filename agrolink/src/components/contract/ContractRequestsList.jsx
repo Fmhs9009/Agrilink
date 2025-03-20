@@ -76,8 +76,8 @@ const ContractRequestItem = memo(({ request, style }) => {
           <div className="flex items-center text-sm">
             <FaCalendarAlt className="text-green-600 mr-2" aria-hidden="true" />
             <div>
-              <p className="font-medium">Requested Harvest</p>
-              <p>{new Date(request.requestedHarvestDate).toLocaleDateString()}</p>
+              <p className="font-medium">Requested Delivery</p>
+              <p>{new Date(request.requestedDeliveryDate).toLocaleDateString()}</p>
             </div>
           </div>
           <div className="flex items-center text-sm">
@@ -95,7 +95,7 @@ const ContractRequestItem = memo(({ request, style }) => {
             <span className="font-medium">₹{request.proposedPrice}</span> per unit
           </div>
           <Link
-            to={`/contract-requests/${request._id}`}
+            to={`/contracts/${request._id}`}
             className="inline-flex items-center px-3 py-1 bg-green-50 text-green-700 rounded-md hover:bg-green-100"
             aria-label={`View details for ${request.product?.name || 'contract'}`}
           >
@@ -116,7 +116,7 @@ const ContractRequestsList = () => {
   
   // Use our custom hook for API calls
   const { data: apiContractRequests, loading: apiLoading, error } = useApi(
-    () => api.get('/api/contract-requests'),
+    () => api.get('/contracts'),
     true // Execute on mount
   );
 

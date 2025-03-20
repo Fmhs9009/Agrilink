@@ -11,6 +11,7 @@ const path = require("path");
 const errorMiddleware = require("./middleware/errorMiddleware");
 const contractRoutes = require('./Routes/contractRoutes');
 const uploadRoutes = require('./Routes/uploadRoutes');
+const notificationRoutes = require('./routes/notificationRoute');
 
 const app = Express();
 
@@ -47,6 +48,7 @@ app.use("/api/v1/auth", userroutes);
 app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/contracts", contractRoutes);
 app.use("/api/v1/upload", uploadRoutes);
+app.use("/api/v1", notificationRoutes);
 
 // Serve temp files
 app.use('/tmp', Express.static(path.join(__dirname, 'tmp')));

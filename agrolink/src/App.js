@@ -8,7 +8,7 @@ import { toast } from 'react-hot-toast';
 import { ROUTES, ROLES, TOAST_CONFIG, AUTH_CONSTANTS } from './config/constants';
 import { setStore } from './services/api';
 import authService from './services/auth/authService';
-import { setAuthenticated, setUser, logout, refreshActivity, checkSession, setRememberMe } from "./reducer/Slice/authSlice";
+import { setAuthenticated, setUser, logout, refreshActivity, checkSession, setRememberMe, setLoading } from "./reducer/Slice/authSlice";
 
 // Import layout components
 import Layout from "./components/layout/Layout";
@@ -16,6 +16,7 @@ import AuthLayout from "./components/layout/AuthLayout";
 import LoadingSpinner from './components/common/LoadingSpinner';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import ProtectedRoute from './components/common/ProtectedRoute';
+import DashboardRouter from './components/common/DashboardRouter';
 
 // Import auth components
 import LoginPage from "./components/auth/Login";
@@ -31,7 +32,6 @@ const PasswordChange = lazy(() => import("./components/auth/PasswordChange"));
 const Home = lazy(() => import("./components/home/Home"));
 const AboutUs = lazy(() => import("./components/pages/AboutUs"));
 const ContactUs = lazy(() => import("./components/pages/ContactUs"));
-const FarmerDashboard = lazy(() => import("./components/dashboard/FarmerDashboard"));
 
 // Shop components
 const Shop = lazy(() => import("./components/shop/Shop"));
@@ -64,6 +64,7 @@ function App() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        dispatch(setLoading(true));
         console.log('Checking authentication status...');
         console.log('Current auth state:', { isAuthenticated, loginData });
         
@@ -104,6 +105,8 @@ function App() {
         }
       } catch (error) {
         console.error('Auth check failed:', error);
+      } finally {
+        dispatch(setLoading(false));
       }
     };
 
@@ -189,7 +192,7 @@ function App() {
             <Route path="dashboard" element={
               <ProtectedRoute>
                 <Suspense fallback={<PageLoader />}>
-                  <FarmerDashboard />
+                  <DashboardRouter />
                 </Suspense>
               </ProtectedRoute>
             } />

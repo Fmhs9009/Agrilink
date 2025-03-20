@@ -11,9 +11,22 @@ const { ROLES } = require('../config/constants');
 const verifyToken = async (req, res, next) => {
   try {
     // Get token from Authorization header or cookie
-    const token = req.cookies?.token || 
-                 req.headers.authorization?.replace('Bearer ', '') || 
-                 null;
+    let token = null;
+    
+    // Check Authorization header
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+    
+    // If no token in header, check cookies
+    if (!token && req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    }
+    
+    console.log('Auth headers:', req.headers.authorization);
+    console.log('Cookies:', req.cookies);
+    console.log('Extracted token:', token ? 'Token found' : 'No token found');
 
     if (!token) {
       return next(new ErrorHandler('Authentication token is missing', 401));
@@ -22,6 +35,7 @@ const verifyToken = async (req, res, next) => {
     try {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('Decoded token:', decoded);
       
       // Get user from database
       const user = await User.findById(decoded.id).select('-password');
@@ -32,14 +46,17 @@ const verifyToken = async (req, res, next) => {
 
       // Attach user to request
       req.user = user;
+      console.log('User attached to request:', user._id);
       next();
     } catch (error) {
+      console.error('Token verification error:', error.message);
       if (error.name === 'TokenExpiredError') {
         return next(new ErrorHandler('Token has expired', 401));
       }
       return next(new ErrorHandler('Invalid token', 401));
     }
   } catch (error) {
+    console.error('Authentication error:', error);
     return next(new ErrorHandler('Authentication failed', 500));
   }
 };

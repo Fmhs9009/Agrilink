@@ -12,7 +12,7 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const location = useLocation();
   const { isAuthenticated, user, loading } = useSelector((state) => state.auth);
   
-  console.log("ProtectedRoute: Auth state:", { isAuthenticated, loading, hasUser: !!user });
+  // console.log("ProtectedRoute: Auth state:", { isAuthenticated, loading, hasUser: !!user });
   
   // If auth state is still loading, show a spinner
   if (loading) {
@@ -43,15 +43,15 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   }
   
   // If roles are specified and user doesn't have required role, redirect to home
-  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+  if (allowedRoles.length > 0 && !allowedRoles.includes(user.accountType)) {
     console.log("ProtectedRoute: User doesn't have required role", { 
-      userRole: user.role, 
+      userRole: user.accountType, 
       allowedRoles 
     });
     return <Navigate to={ROUTES.HOME} replace />;
   }
   
-  console.log("ProtectedRoute: Access granted", { userRole: user.role });
+  // console.log("ProtectedRoute: Access granted", { userRole: user.accountType });
   
   // If children is a function, call it with user data
   if (typeof children === 'function') {

@@ -4,7 +4,7 @@
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { API_CONFIG, STATUS_CODES, AUTH_CONSTANTS } from '../config/constants';
-import authService from './auth/authService';
+import authService from './authService';
 
 // Create a store reference to access Redux store
 let storeInstance = null;
@@ -36,7 +36,8 @@ export const api = axios.create({
   timeout: API_CONFIG.TIMEOUT,
   headers: {
     'Content-Type': API_CONFIG.CONTENT_TYPE,
-  }
+  },
+  withCredentials: true // Add this to enable cookies with CORS
 });
 
 // Request interceptor to add auth token
@@ -46,6 +47,9 @@ api.interceptors.request.use(
     const token = authService.getToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+      console.log('Adding token to request:', config.url);
+    } else {
+      console.warn('No token available for request:', config.url);
     }
     return config;
   },
@@ -69,10 +73,8 @@ api.interceptors.response.use(
           authService.removeToken();
           authService.removeUser();
           
-          if (storeInstance) {
-      storeInstance.dispatch({ type: 'auth/logout' });
-            errorToast('Session expired. Please login again.');
-          }
+          // Don't try to dispatch to Redux store - just show the toast
+          errorToast('Authentication required. Please login.');
           break;
         case STATUS_CODES.FORBIDDEN:
           errorToast('You do not have permission to perform this action');
@@ -111,10 +113,28 @@ const handleApiResponse = async (apiCall) => {
     return response.data;
   } catch (error) {
     console.error('API Error:', error);
+    
+    // Check if the error is due to authentication
+    if (error.response?.status === STATUS_CODES.UNAUTHORIZED) {
+      console.error('Authentication error - Please login again');
+      
+      // Redirect to login page
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/auth/login') {
+        window.location.href = '/login';
+      }
+      
+  return {
+        success: false, 
+        message: 'Authentication required. Please login.',
+        error: 'Authentication failed'
+      };
+    }
+    
     return { 
       success: false, 
       message: error.response?.data?.message || 'An error occurred',
-      error: error.response?.data || error.message
+      error: error.response?.data || error.message,
+      status: error.response?.status
     };
   }
 };
@@ -464,6 +484,96 @@ export const contractAPI = {
   create: async (contractData) => {
     return handleApiResponse(() => api.post('/contracts', contractData));
   },
+  
+  // Create contract request
+  createContractRequest: async (contractData) => {
+    const token = authService.getToken();
+    const currentUser = authService.getUser();
+    
+    console.log("Creating contract request with token:", token ? "Token exists" : "No token");
+    console.log("Current user:", currentUser);
+    
+    // WORKAROUND: Instead of using /contracts/request endpoint which has the status issue,
+    // try using the direct /contracts endpoint which might not have the same validation problem
+    
+    // Prepare contract data with valid status
+    const modifiedContractData = { 
+      ...contractData,
+      status: "requested", // Use a valid status from the model enum
+      buyer: currentUser?._id // Make sure buyer is set correctly
+    };
+    
+    console.log("Contract data being sent via WORKAROUND method:", JSON.stringify(modifiedContractData, null, 2));
+    console.log("IMPORTANT: Using /contracts endpoint instead of /contracts/request to bypass controller status issue");
+    
+    try {
+      // First attempt: Try the regular endpoint with explicitly set status
+      try {
+        const response = await api.post('/contracts/request', modifiedContractData, {
+          withCredentials: true,
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        console.log("Contract request API response (via regular endpoint):", response.data);
+        return response.data;
+      } catch (firstError) {
+        // If the first attempt failed with status validation error, try the fallback method
+        if (firstError.response?.data?.error?.includes && 
+            firstError.response.data.error.includes('Validator failed for path `status`')) {
+          
+          console.log("Status validation error detected, trying fallback method...");
+          
+          // FALLBACK: Try using direct contracts endpoint
+          const fallbackResponse = await api.post('/contracts', modifiedContractData, {
+            withCredentials: true,
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          console.log("Contract API fallback response:", fallbackResponse.data);
+          return fallbackResponse.data;
+        } else {
+          // If it's not a status validation error, rethrow it
+          throw firstError;
+        }
+      }
+    } catch (error) {
+      console.error("Contract request failed with error:", error.response?.data || error.message);
+      console.error("Error details:", error);
+      
+      // Specifically log details about the status validation error
+      if (error.response?.data?.error?.includes && error.response.data.error.includes('Validator failed for path `status`')) {
+        console.error("STATUS VALIDATION ERROR DETECTED (even with fallback):");
+        console.error("The controller is likely setting status='pending' which is not valid in the model");
+        console.error("Backend needs to be updated to either:");
+        console.error("1. Change controller to use 'requested' instead of 'pending'");
+        console.error("2. Add 'pending' to the valid enum values in the Contract model");
+        
+        // Display a more detailed error message to the user
+        const errorMessage = "Contract validation failed. Please contact the backend developer to fix the status field configuration.";
+        toast.error(errorMessage);
+        
+        return { 
+          success: false, 
+          message: errorMessage,
+          error: error.response?.data || error.message,
+          details: "Status validation error - backend config issue"
+        };
+      }
+      
+      const errorMessage = error.response?.data?.message || 'Failed to submit contract request';
+      toast.error(errorMessage);
+      
+      return { 
+        success: false, 
+        message: errorMessage,
+        error: error.response?.data || error.message
+      };
+    }
+  },
 
   // Update contract
   update: async (id, contractData) => {
@@ -503,6 +613,17 @@ export const contractAPI = {
   // Get buyer's contracts
   getByBuyer: async (buyerId) => {
     return handleApiResponse(() => api.get(`/contracts/buyer/${buyerId}`));
+  },
+  
+  // Update contract status (accept, reject, negotiate)
+  updateContractStatus: async (id, statusData) => {
+    console.log("Updating contract status for ID:", id, "with data:", statusData);
+    return handleApiResponse(() => api.put(`/contracts/${id}/status`, statusData));
+  },
+  
+  // Get contract by ID (alias for getById for consistency)
+  getContractById: async (id) => {
+    return handleApiResponse(() => api.get(`/contracts/${id}`));
   }
 };
 
