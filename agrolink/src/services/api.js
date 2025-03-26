@@ -375,7 +375,36 @@ export const productAPI = {
       console.error('Error fetching products by category:', error);
       throw error;
     }
-  }
+  },
+
+  getRecommendedProducts: async () => {
+    try {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      if (!token) {
+        return { success: false, message: 'Authentication required' };
+      }
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/products/recommended`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        return { success: true, products: data.products || [] };
+      } else {
+        console.warn('Failed to fetch recommended products:', data.message);
+        return { success: false, message: data.message || 'Failed to fetch recommended products' };
+      }
+    } catch (error) {
+      console.error('Error fetching recommended products:', error);
+      return { success: false, message: 'Error fetching recommended products' };
+    }
+  },
 };
 
 // Category API service
@@ -612,13 +641,18 @@ export const contractAPI = {
 
   // Get buyer's contracts
   getByBuyer: async (buyerId) => {
-    return handleApiResponse(() => api.get(`/contracts/buyer/${buyerId}`));
+    return handleApiResponse(() => api.get(`/contracts/user/all`));
   },
   
   // Update contract status (accept, reject, negotiate)
   updateContractStatus: async (id, statusData) => {
     console.log("Updating contract status for ID:", id, "with data:", statusData);
     return handleApiResponse(() => api.put(`/contracts/${id}/status`, statusData));
+  },
+  
+  // Get contract statistics
+  getContractStats: async () => {
+    return handleApiResponse(() => api.get('/contracts/stats/detailed'));
   },
   
   // Get contract by ID (alias for getById for consistency)

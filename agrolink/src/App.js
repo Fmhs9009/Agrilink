@@ -40,9 +40,14 @@ const ProductManagement = lazy(() => import("./components/product/ProductManagem
 const ProductForm = lazy(() => import("./components/product/ProductForm"));
 const CategoryProducts = lazy(() => import("./components/product/CategoryProducts"));
 
+// Contract pages
+const ContractsPage = lazy(() => import("./pages/contracts/ContractsPage"));
+const ContractDetailPage = lazy(() => import("./pages/contracts/ContractDetailPage"));
+const ContractRespondPage = lazy(() => import("./pages/contracts/ContractRespondPage"));
+
 // Contract components
-const ContractRequests = lazy(() => import("./components/contract/ContractRequests"));
 const ContractManagement = lazy(() => import("./components/contract/ContractManagement"));
+const ContractRequestsList = lazy(() => import("./components/contract/ContractRequestsList"));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -242,10 +247,31 @@ function App() {
             
             {/* Contract Routes */}
             <Route path="contracts">
+              <Route index element={
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <ContractsPage />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path=":id" element={
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <ContractDetailPage />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path=":id/respond" element={
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <ContractRespondPage />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
               <Route path="requests" element={
                 <ProtectedRoute>
                   <Suspense fallback={<PageLoader />}>
-                    <ContractRequests />
+                    <ContractRequestsList />
                   </Suspense>
                 </ProtectedRoute>
               } />

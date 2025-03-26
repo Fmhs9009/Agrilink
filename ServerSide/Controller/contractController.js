@@ -138,7 +138,7 @@ exports.createContractRequest = catchAsyncErrors(async (req, res, next) => {
             recipient: farmerId,
             type: 'contract_request',
             title: 'New Contract Request',
-            message: `${buyer.name} has requested a contract for ${quantity} ${unit} of ${product.name}`,
+            message: `${buyer.Name} has requested a contract for ${quantity} ${unit} of ${product.name}`,
             data: {
                 contractId: contract._id,
                 productId: cropId,
@@ -556,12 +556,13 @@ exports.getContracts = async (req, res) => {
         const userId = req.user.id;
         const userRole = req.user.accountType;
         
+     //   console.log(userId,"sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss");
         let query = {};
         
         // Filter contracts based on user role
         if (userRole === 'farmer') {
             query.farmer = userId;
-        } else if (userRole === 'buyer') {
+        } else if (userRole === 'customer') {
             query.buyer = userId;
         } else {
             // Admin can see all contracts
@@ -603,7 +604,7 @@ exports.getContracts = async (req, res) => {
         
         // Get total count for pagination
         const totalContracts = await Contract.countDocuments(query);
-        
+        console.log(contracts,"contracts");
         return res.status(200).json({
             success: true,
             count: contracts.length,

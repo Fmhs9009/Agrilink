@@ -24,9 +24,9 @@ const verifyToken = async (req, res, next) => {
       token = req.cookies.token;
     }
     
-    console.log('Auth headers:', req.headers.authorization);
-    console.log('Cookies:', req.cookies);
-    console.log('Extracted token:', token ? 'Token found' : 'No token found');
+   // console.log('Auth headers:', req.headers.authorization);
+   // console.log('Cookies:', req.cookies);
+   // console.log('Extracted token:', token ? 'Token found' : 'No token found');
 
     if (!token) {
       return next(new ErrorHandler('Authentication token is missing', 401));
@@ -35,7 +35,7 @@ const verifyToken = async (req, res, next) => {
     try {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log('Decoded token:', decoded);
+    //  console.log('Decoded token:', decoded);
       
       // Get user from database
       const user = await User.findById(decoded.id).select('-password');
@@ -46,7 +46,7 @@ const verifyToken = async (req, res, next) => {
 
       // Attach user to request
       req.user = user;
-      console.log('User attached to request:', user._id);
+   //   console.log('User attached to request:', user._id);
       next();
     } catch (error) {
       console.error('Token verification error:', error.message);

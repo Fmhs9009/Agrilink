@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { 
   FaHandshake, 
@@ -16,16 +16,16 @@ import {
   FaMapMarkerAlt,
   FaPhone,
   FaEnvelope,
-  FaEdit
+  FaEdit,
+  FaFileContract
 } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 import { contractAPI } from '../../services/api';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
+import LoadingSpinner from '../common/LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { ROLES } from '../../config/constants';
-import ContractRespond from '../../components/contract/ContractRespond';
 
-const ContractRespondPage = () => {
+const ContractRespond = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -66,7 +66,7 @@ const ContractRespondPage = () => {
     }
     
     fetchContractDetails();
-  }, [id, isAuthenticated, user]);
+  }, [id, isAuthenticated, user, navigate]);
   
   const fetchContractDetails = async () => {
     try {
@@ -312,92 +312,118 @@ const ContractRespondPage = () => {
       </div>
       
       {/* Contract Summary */}
-      <div className="bg-white shadow rounded-lg overflow-hidden mb-6">
-        <div className="p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Contract Summary</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Product Information */}
-            <div>
-              <div className="flex items-start mb-4">
-                {contract.crop.images && contract.crop.images.length > 0 ? (
-                  <img
-                    src={contract.crop.images[0].url || contract.crop.images[0]}
-                    alt={contract.crop.name}
-                    className="h-16 w-16 rounded-md object-cover mr-3"
-                  />
-                ) : (
-                  <div className="h-16 w-16 rounded-md bg-gray-200 flex items-center justify-center mr-3">
-                    <FaShoppingBasket className="h-8 w-8 text-gray-400" />
-                  </div>
-                )}
-                <div>
-                  <h4 className="text-base font-medium text-gray-900">{contract.crop.name}</h4>
-                  <p className="text-sm text-gray-500">{contract.crop.category}</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Requested by: {contract.buyer.name}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Quantity:</span>
-                  <span className="text-sm font-medium text-gray-900">{contract.quantity} {contract.unit}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Price per Unit:</span>
-                  <span className="text-sm font-medium text-gray-900">₹{formatCurrency(contract.pricePerUnit)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Total Amount:</span>
-                  <span className="text-sm font-medium text-green-600">₹{formatCurrency(contract.totalAmount)}</span>
-                </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        {/* Buyer Information */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            <FaUser className="mr-2 text-blue-500" />
+            Buyer Information
+          </h2>
+          <div className="space-y-4">
+            <div className="flex items-start">
+              <FaUser className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-500">Name:</p>
+                <p className="text-sm font-medium text-gray-900">{contract.buyer.name}</p>
               </div>
             </div>
-            
-            {/* Contract Terms */}
+            <div className="flex items-start">
+              <FaEnvelope className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-500">Email:</p>
+                <p className="text-sm font-medium text-gray-900">{contract.buyer.email}</p>
+              </div>
+            </div>
+            <div className="flex items-start">
+              <FaPhone className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-500">Phone:</p>
+                <p className="text-sm font-medium text-gray-900">{contract.buyer.phone || 'Not provided'}</p>
+              </div>
+            </div>
+            <div className="flex items-start">
+              <FaMapMarkerAlt className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-500">Location:</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {contract.buyer.city ? `${contract.buyer.city}, ${contract.buyer.state}` : 'Not provided'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Product Information */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            <FaShoppingBasket className="mr-2 text-green-500" />
+            Product Information
+          </h2>
+          <div className="flex items-center mb-4">
+            <div className="flex-shrink-0 h-16 w-16 rounded-md bg-gray-200 overflow-hidden mr-4">
+              {contract.crop.images && contract.crop.images.length > 0 ? (
+                <img
+                  src={contract.crop.images[0].url || contract.crop.images[0]}
+                  alt={contract.crop.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center bg-gray-200">
+                  <FaShoppingBasket className="h-8 w-8 text-gray-400" />
+                </div>
+              )}
+            </div>
             <div>
-              <div className="space-y-3">
-                <div className="flex items-start">
-                  <FaCalendarAlt className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
-                  <div>
-                    <p className="text-sm text-gray-500">Expected Harvest Date:</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {contract.expectedHarvestDate ? formatDate(contract.expectedHarvestDate) : 'Not specified'}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start">
-                  <FaCalendarAlt className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
-                  <div>
-                    <p className="text-sm text-gray-500">Delivery Date:</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {contract.deliveryDate ? formatDate(contract.deliveryDate) : 'Not specified'}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start">
-                  <FaExchangeAlt className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
-                  <div>
-                    <p className="text-sm text-gray-500">Delivery Frequency:</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {contract.deliveryFrequency ? contract.deliveryFrequency.charAt(0).toUpperCase() + contract.deliveryFrequency.slice(1) : 'Not specified'}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start">
-                  <FaMoneyBillWave className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
-                  <div>
-                    <p className="text-sm text-gray-500">Payment Terms:</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {contract.paymentTerms ? contract.paymentTerms : 'Not specified'}
-                    </p>
-                  </div>
-                </div>
+              <h3 className="text-sm font-medium text-gray-900">{contract.crop.name}</h3>
+              <p className="text-xs text-gray-500">{contract.crop.category}</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-500">Quantity:</span>
+              <span className="text-sm font-medium text-gray-900">{contract.quantity} {contract.unit}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-500">Price per Unit:</span>
+              <span className="text-sm font-medium text-gray-900">₹{formatCurrency(contract.pricePerUnit)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-500">Total Amount:</span>
+              <span className="text-sm font-medium text-green-600">₹{formatCurrency(contract.totalAmount)}</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Contract Terms */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            <FaFileContract className="mr-2 text-purple-500" />
+            Contract Terms
+          </h2>
+          <div className="space-y-4">
+            <div className="flex items-start">
+              <FaCalendarAlt className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-500">Request Date:</p>
+                <p className="text-sm font-medium text-gray-900">{formatDate(contract.createdAt)}</p>
+              </div>
+            </div>
+            <div className="flex items-start">
+              <FaCalendarAlt className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-500">Delivery Date:</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {contract.deliveryDate ? formatDate(contract.deliveryDate) : 'Not specified'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start">
+              <FaMoneyBillWave className="h-5 w-5 text-gray-400 mr-2 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-500">Payment Terms:</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {contract.paymentTerms ? contract.paymentTerms : 'Not specified'}
+                </p>
               </div>
             </div>
           </div>
@@ -445,52 +471,32 @@ const ContractRespondPage = () => {
         </div>
         
         <div className="p-6">
-          {/* Accept Tab */}
           {activeTab === 'accept' && (
             <div>
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Accept Contract</h2>
-              <p className="text-gray-500 mb-6">
-                By accepting this contract, you agree to the terms and conditions specified above.
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Accept Contract</h3>
+              <p className="text-gray-600 mb-4">
+                By accepting this contract, you agree to fulfill the order according to the terms specified above.
               </p>
               
-              <div className="mb-6">
-                <label htmlFor="acceptRemarks" className="block text-sm font-medium text-gray-700 mb-1">
-                  Additional Remarks (optional)
+              <div className="mb-4">
+                <label htmlFor="accept-remarks" className="block text-sm font-medium text-gray-700 mb-1">
+                  Additional Remarks (Optional)
                 </label>
                 <textarea
-                  id="acceptRemarks"
-                  name="acceptRemarks"
-                  rows="3"
+                  id="accept-remarks"
+                  rows={3}
+                  className="shadow-sm block w-full focus:ring-green-500 focus:border-green-500 sm:text-sm border border-gray-300 rounded-md"
+                  placeholder="Any comments or additional information..."
                   value={remarks}
                   onChange={handleRemarksChange}
-                  placeholder="Add any additional notes or comments..."
-                  className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                ></textarea>
+                />
               </div>
               
-              <div className="bg-gray-50 p-4 rounded-md border border-gray-200 mb-6">
-                <h3 className="text-sm font-medium text-gray-900 mb-2">What happens next?</h3>
-                <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
-                  <li>The buyer will be notified that you've accepted their contract request.</li>
-                  <li>You'll be able to communicate with the buyer to coordinate delivery details.</li>
-                  <li>You are committing to provide the specified quantity of {contract.crop.name} by the agreed delivery date.</li>
-                  <li>Payment will be processed according to the agreed payment terms.</li>
-                </ul>
-              </div>
-              
-              <div className="flex justify-end space-x-3">
+              <div className="flex justify-end">
                 <button
-                  type="button"
-                  onClick={() => navigate(`/contracts/${id}`)}
-                  className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
                   onClick={handleAcceptContract}
                   disabled={submitting}
-                  className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
                     <>
@@ -508,46 +514,33 @@ const ContractRespondPage = () => {
             </div>
           )}
           
-          {/* Reject Tab */}
           {activeTab === 'reject' && (
             <div>
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Reject Contract</h2>
-              <p className="text-gray-500 mb-6">
-                If you cannot fulfill this contract request, please provide a reason for rejection.
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Reject Contract</h3>
+              <p className="text-gray-600 mb-4">
+                Please provide a reason for rejecting this contract request. This will help the buyer understand your decision.
               </p>
               
-              <div className="mb-6">
-                <label htmlFor="rejectRemarks" className="block text-sm font-medium text-gray-700 mb-1">
+              <div className="mb-4">
+                <label htmlFor="reject-reason" className="block text-sm font-medium text-gray-700 mb-1">
                   Reason for Rejection <span className="text-red-500">*</span>
                 </label>
                 <textarea
-                  id="rejectRemarks"
-                  name="rejectRemarks"
-                  rows="3"
+                  id="reject-reason"
+                  rows={3}
+                  className="shadow-sm block w-full focus:ring-red-500 focus:border-red-500 sm:text-sm border border-gray-300 rounded-md"
+                  placeholder="Please explain why you are rejecting this contract..."
                   value={remarks}
                   onChange={handleRemarksChange}
-                  placeholder="Please explain why you're rejecting this contract request..."
-                  className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                   required
-                ></textarea>
-                <p className="mt-1 text-xs text-gray-500">
-                  Providing a clear reason helps the buyer understand your decision.
-                </p>
+                />
               </div>
               
-              <div className="flex justify-end space-x-3">
+              <div className="flex justify-end">
                 <button
-                  type="button"
-                  onClick={() => navigate(`/contracts/${id}`)}
-                  className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
                   onClick={handleRejectContract}
-                  disabled={submitting || !remarks.trim()}
-                  className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={submitting}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
                     <>
@@ -565,159 +558,103 @@ const ContractRespondPage = () => {
             </div>
           )}
           
-          {/* Negotiate Tab */}
           {activeTab === 'negotiate' && (
             <div>
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Negotiate Terms</h2>
-              <p className="text-gray-500 mb-6">
-                If you'd like to propose different terms for this contract, you can submit a counter offer.
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Negotiate Terms</h3>
+              <p className="text-gray-600 mb-4">
+                Propose different terms for this contract. The buyer will have the option to accept, reject, or
+                continue negotiating.
               </p>
               
               <form onSubmit={handleNegotiateContract}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
                     <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
-                      Quantity ({contract.unit})
+                      Quantity
                     </label>
-                    <div className="mt-1 relative rounded-md shadow-sm">
-                      <input
-                        type="number"
-                        name="quantity"
-                        id="quantity"
-                        value={counterOffer.quantity}
-                        onChange={handleInputChange}
-                        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
-                        placeholder="Enter quantity"
-                        min="1"
-                        required
-                      />
-                    </div>
-                    {contract.quantity !== counterOffer.quantity && (
-                      <p className="mt-1 text-xs text-purple-600 flex items-center">
-                        <FaExchangeAlt className="mr-1" />
-                        Original: {contract.quantity} {contract.unit}
-                      </p>
-                    )}
+                    <input
+                      type="number"
+                      id="quantity"
+                      name="quantity"
+                      className="shadow-sm block w-full focus:ring-purple-500 focus:border-purple-500 sm:text-sm border border-gray-300 rounded-md"
+                      value={counterOffer.quantity}
+                      onChange={handleInputChange}
+                      min="1"
+                    />
                   </div>
                   
                   <div>
                     <label htmlFor="pricePerUnit" className="block text-sm font-medium text-gray-700 mb-1">
-                      Price per {contract.unit} (₹)
+                      Price per Unit (₹)
                     </label>
-                    <div className="mt-1 relative rounded-md shadow-sm">
-                      <input
-                        type="number"
-                        name="pricePerUnit"
-                        id="pricePerUnit"
-                        value={counterOffer.pricePerUnit}
-                        onChange={handleInputChange}
-                        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
-                        placeholder="Enter price per unit"
-                        min="1"
-                        step="0.01"
-                        required
-                      />
-                    </div>
-                    {contract.pricePerUnit !== counterOffer.pricePerUnit && (
-                      <p className="mt-1 text-xs text-purple-600 flex items-center">
-                        <FaExchangeAlt className="mr-1" />
-                        Original: ₹{formatCurrency(contract.pricePerUnit)}
-                      </p>
-                    )}
+                    <input
+                      type="number"
+                      id="pricePerUnit"
+                      name="pricePerUnit"
+                      className="shadow-sm block w-full focus:ring-purple-500 focus:border-purple-500 sm:text-sm border border-gray-300 rounded-md"
+                      value={counterOffer.pricePerUnit}
+                      onChange={handleInputChange}
+                      min="0"
+                      step="0.01"
+                    />
                   </div>
                   
                   <div>
                     <label htmlFor="deliveryDate" className="block text-sm font-medium text-gray-700 mb-1">
                       Delivery Date
                     </label>
-                    <div className="mt-1 relative rounded-md shadow-sm">
-                      <input
-                        type="date"
-                        name="deliveryDate"
-                        id="deliveryDate"
-                        value={counterOffer.deliveryDate}
-                        onChange={handleInputChange}
-                        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
-                      />
-                    </div>
-                    {contract.deliveryDate && contract.deliveryDate !== counterOffer.deliveryDate && (
-                      <p className="mt-1 text-xs text-purple-600 flex items-center">
-                        <FaExchangeAlt className="mr-1" />
-                        Original: {formatDate(contract.deliveryDate)}
-                      </p>
-                    )}
+                    <input
+                      type="date"
+                      id="deliveryDate"
+                      name="deliveryDate"
+                      className="shadow-sm block w-full focus:ring-purple-500 focus:border-purple-500 sm:text-sm border border-gray-300 rounded-md"
+                      value={counterOffer.deliveryDate}
+                      onChange={handleInputChange}
+                      min={new Date().toISOString().split('T')[0]}
+                    />
                   </div>
                   
                   <div>
                     <label htmlFor="paymentTerms" className="block text-sm font-medium text-gray-700 mb-1">
                       Payment Terms
                     </label>
-                    <div className="mt-1 relative rounded-md shadow-sm">
-                      <select
-                        name="paymentTerms"
-                        id="paymentTerms"
-                        value={counterOffer.paymentTerms}
-                        onChange={handleInputChange}
-                        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
-                      >
-                        <option value="">Select payment terms</option>
-                        <option value="advance">Advance Payment</option>
-                        <option value="partial">Partial Advance</option>
-                        <option value="delivery">Payment on Delivery</option>
-                        <option value="credit30">30 Days Credit</option>
-                        <option value="credit60">60 Days Credit</option>
-                      </select>
-                    </div>
-                    {contract.paymentTerms && contract.paymentTerms !== counterOffer.paymentTerms && (
-                      <p className="mt-1 text-xs text-purple-600 flex items-center">
-                        <FaExchangeAlt className="mr-1" />
-                        Original: {contract.paymentTerms}
-                      </p>
-                    )}
+                    <select
+                      id="paymentTerms"
+                      name="paymentTerms"
+                      className="shadow-sm block w-full focus:ring-purple-500 focus:border-purple-500 sm:text-sm border border-gray-300 rounded-md"
+                      value={counterOffer.paymentTerms}
+                      onChange={handleInputChange}
+                    >
+                      <option value="">Select payment terms</option>
+                      <option value="standard">Standard (50% advance, 50% on delivery)</option>
+                      <option value="milestone">Milestone (20% advance, 50% at midpoint, 30% on delivery)</option>
+                      <option value="delivery">On Delivery (100% on delivery)</option>
+                      <option value="advance">Full Advance (100% upfront)</option>
+                    </select>
                   </div>
                 </div>
                 
-                <div className="mb-6">
-                  <label htmlFor="negotiateRemarks" className="block text-sm font-medium text-gray-700 mb-1">
+                <div className="mb-4">
+                  <label htmlFor="remarks" className="block text-sm font-medium text-gray-700 mb-1">
                     Explanation for Counter Offer <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     id="remarks"
                     name="remarks"
-                    rows="3"
+                    rows={3}
+                    className="shadow-sm block w-full focus:ring-purple-500 focus:border-purple-500 sm:text-sm border border-gray-300 rounded-md"
+                    placeholder="Explain your counter offer and proposed changes..."
                     value={counterOffer.remarks}
                     onChange={handleInputChange}
-                    placeholder="Please explain your counter offer and why you're proposing these changes..."
-                    className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
                     required
-                  ></textarea>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Providing a clear explanation helps the buyer understand your proposed changes.
-                  </p>
+                  />
                 </div>
                 
-                <div className="bg-gray-50 p-4 rounded-md border border-gray-200 mb-6">
-                  <h3 className="text-sm font-medium text-gray-900 mb-2">What happens next?</h3>
-                  <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
-                    <li>The buyer will be notified of your counter offer.</li>
-                    <li>They can accept, reject, or propose another counter offer.</li>
-                    <li>You'll be notified when they respond to your counter offer.</li>
-                    <li>The contract will remain in "negotiation" status until both parties agree or one party rejects.</li>
-                  </ul>
-                </div>
-                
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/contracts/${id}`)}
-                    className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                  >
-                    Cancel
-                  </button>
+                <div className="flex justify-end">
                   <button
                     type="submit"
-                    disabled={submitting || !counterOffer.remarks.trim()}
-                    className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={submitting}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting ? (
                       <>
@@ -741,4 +678,4 @@ const ContractRespondPage = () => {
   );
 };
 
-export default ContractRespondPage; 
+export default ContractRespond; 

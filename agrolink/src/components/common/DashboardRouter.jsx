@@ -24,14 +24,14 @@ const DashboardRouter = () => {
       </div>
     );
   }
-  console.log(user.accountType)
+ // console.log(user.accountType)
   // Render the appropriate dashboard based on user's account type
   switch (user.accountType) {
     case ROLES.FARMER:
-      console.log("DashboardRouter: Rendering Farmer Dashboard");
+ //     console.log("DashboardRouter: Rendering Farmer Dashboard");
       return <FarmerDashboard />;
     case ROLES.BUYER:
-      console.log("DashboardRouter: Rendering Customer Dashboard");
+    //  console.log("DashboardRouter: Rendering Customer Dashboard");
       return <CustomerDashboard />;
     case ROLES.ADMIN:
       console.log("DashboardRouter: Redirecting to Admin Dashboard");

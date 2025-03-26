@@ -184,7 +184,7 @@ class AuthService {
           }
         }
         
-        console.log('Extracted token:', token ? 'Token found' : 'No token found');
+       // console.log('Extracted token:', token ? 'Token found' : 'No token found');
         
         if (token) {
           this.setToken(token);
