@@ -159,6 +159,12 @@ const ContractDetail = () => {
             <FaCheck className="mr-1" aria-hidden="true" /> Completed
           </span>
         );
+      case 'cancelled':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800" role="status">
+            <FaTimes className="mr-1" aria-hidden="true" /> Cancelled
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800" role="status">
@@ -185,15 +191,89 @@ const ContractDetail = () => {
     if (window.confirm('Are you sure you want to cancel this contract request? This action cannot be undone.')) {
       try {
         setCancelLoading(true);
-        await dispatch(cancelContractRequest(id)).unwrap();
+        console.log("Initiating contract cancellation for ID:", id);
+        
+        // Try to cancel using the Redux action
+        const result = await dispatch(cancelContractRequest(id)).unwrap();
+        console.log("Cancel contract result:", result);
+        
         toast.success('Contract request cancelled successfully');
-        navigate('/contracts');
+        
+        // First update the local contract state to reflect cancellation
+        if (contract) {
+          setContract({
+            ...contract,
+            status: 'cancelled'
+          });
+        }
+        
+        // Navigate after a short delay to ensure toast is visible
+        setTimeout(() => {
+          navigate('/contracts');
+        }, 1500);
       } catch (error) {
-        toast.error(`Failed to cancel contract: ${error.message}`);
-      } finally {
-        setCancelLoading(false);
+        console.error("Cancel contract error:", error);
+        toast.error(`Failed to cancel contract: ${error.message || 'Unknown error'}`);
+        
+        // Alternative manual approach if Redux action fails
+        try {
+          console.log("Trying manual approach to cancel contract");
+          const manualResponse = await api.put(`/contracts/${id}/status`, { 
+            status: 'cancelled',
+            notes: 'Cancelled by user'
+          });
+          
+          if (manualResponse.data && manualResponse.data.success) {
+            toast.success('Contract cancelled using alternative method');
+            
+            // Update local contract state
+            if (contract) {
+              setContract({
+                ...contract,
+                status: 'cancelled'
+              });
+            }
+            
+            // Navigate after a delay
+            setTimeout(() => {
+              navigate('/contracts');
+            }, 1500);
+          } else {
+            setCancelLoading(false);
+          }
+        } catch (manualError) {
+          console.error("Manual cancel also failed:", manualError);
+          setCancelLoading(false);
+        }
       }
     }
+  };
+
+  // Add this function to help recover from errors
+  const handleRetryAll = () => {
+    // Clear error state
+    dispatch({ type: 'contractRequests/clearError' });
+    
+    // Reset local state
+    setContract(null);
+    setIsLoading(true);
+    
+    // Fetch contracts again
+    dispatch(fetchContractRequests())
+      .unwrap()
+      .then(() => {
+        console.log("Successfully refreshed contracts");
+        // Now try to fetch this specific contract
+        fetchContractById();
+      })
+      .catch(err => {
+        console.error("Failed to refresh contracts:", err);
+        // Try direct fetch as fallback
+        fetchContractById();
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   };
 
   if (loading || isLoading) {
@@ -206,13 +286,26 @@ const ContractDetail = () => {
         <FaExclamationTriangle className="text-red-500 text-5xl mx-auto mb-4" aria-hidden="true" />
         <h2 className="text-xl font-semibold text-gray-800 mb-2">Error Loading Contract</h2>
         <p className="text-red-500 mb-4">{error}</p>
-        <Link 
-          to="/contracts" 
-          className="text-green-600 hover:underline mt-4 inline-block"
-          aria-label="Go back to contract requests"
-        >
-          Back to Contract Requests
-        </Link>
+        <div className="flex flex-wrap justify-center gap-3">
+          <button
+            onClick={handleRetryAll}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          >
+            Retry Loading
+          </button>
+          <button
+            onClick={fetchContractById}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Try Direct Fetch
+          </button>
+          <Link 
+            to="/contracts" 
+            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+          >
+            Back to Contract Requests
+          </Link>
+        </div>
       </div>
     );
   }
@@ -225,19 +318,26 @@ const ContractDetail = () => {
         <FaExclamationTriangle className="text-yellow-500 text-5xl mx-auto mb-4" aria-hidden="true" />
         <h2 className="text-xl font-semibold text-gray-800 mb-2">Contract Not Found</h2>
         <p className="text-gray-600 mb-4">The contract you're looking for doesn't exist or you don't have permission to view it.</p>
-        <button 
-          onClick={fetchContractById}
-          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 mr-2"
-        >
-          Try Again
-        </button>
-        <Link 
-          to="/contracts" 
-          className="text-green-600 hover:underline mt-4 inline-block"
-          aria-label="Go back to contract requests"
-        >
-          Back to Contract Requests
-        </Link>
+        <div className="flex flex-wrap justify-center gap-3">
+          <button 
+            onClick={handleRetryAll}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          >
+            Retry All
+          </button>
+          <button 
+            onClick={fetchContractById}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Try Again
+          </button>
+          <Link 
+            to="/contracts" 
+            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+          >
+            Back to Contract Requests
+          </Link>
+        </div>
       </div>
     );
   }
@@ -463,7 +563,34 @@ const ContractDetail = () => {
             </div>
           </div>
 
-          {contract.status !== 'pending' && contract.status !== 'requested' && (
+          {contract.status === 'cancelled' && (
+            <div className="relative pl-12 pb-8">
+              <div className="absolute left-0 rounded-full bg-gray-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
+                <FaTimes />
+              </div>
+              <div>
+                <p className="font-medium">Contract Cancelled</p>
+                <p className="text-sm text-gray-600">
+                  {contract.cancelDate || contract.updatedAt
+                    ? (() => {
+                        try {
+                          return new Date(contract.cancelDate || contract.updatedAt).toLocaleString();
+                        } catch (e) {
+                          return 'Date not available';
+                        }
+                      })()
+                    : 'Date not available'}
+                </p>
+                {contract.cancelNotes && (
+                  <p className="mt-1 text-sm bg-gray-50 p-2 rounded">
+                    Note: {contract.cancelNotes}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {contract.status !== 'pending' && contract.status !== 'requested' && contract.status !== 'cancelled' && (
             <div className="relative pl-12 pb-8">
               <div className="absolute left-0 rounded-full bg-blue-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
                 {contract.status === 'approved' || contract.status === 'accepted' ? <FaCheck /> : <FaTimes />}
@@ -530,13 +657,15 @@ const ContractDetail = () => {
           <button
             className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
             onClick={handleCancelContract}
-            disabled={cancelLoading}
+            disabled={cancelLoading || contract.status === 'cancelled'}
             aria-label="Cancel this contract request"
           >
             {cancelLoading ? (
               <>
                 <span className="animate-spin mr-2">⟳</span> Cancelling...
               </>
+            ) : contract.status === 'cancelled' ? (
+              <>Already Cancelled</>
             ) : (
               <>Cancel Request</>
             )}

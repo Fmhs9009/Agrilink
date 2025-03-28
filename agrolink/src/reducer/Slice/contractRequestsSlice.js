@@ -79,10 +79,53 @@ export const cancelContractRequest = createAsyncThunk(
   'contractRequests/cancel',
   async (id, { rejectWithValue }) => {
     try {
-      await api.delete(`/contracts/${id}`);
-      toast.success('Contract request cancelled successfully');
-      return id;
+      console.log("Attempting to cancel contract with ID:", id);
+      
+      // First try the direct delete endpoint
+      try {
+        const response = await api.delete(`/contracts/${id}`);
+        console.log("Cancel contract response:", response);
+        
+        if (response.data && (response.data.success || response.status === 200)) {
+          toast.success('Contract request cancelled successfully');
+          return id;
+        }
+      } catch (firstError) {
+        console.warn("First cancel attempt failed:", firstError.message);
+      }
+      
+      // Second attempt - try updating the status to "cancelled"
+      try {
+        console.log("Trying second cancel approach - updating status to cancelled");
+        const updateResponse = await api.put(`/contracts/${id}/status`, { status: 'cancelled' });
+        console.log("Cancel via status update response:", updateResponse);
+        
+        if (updateResponse.data && updateResponse.data.success) {
+          toast.success('Contract request cancelled successfully');
+          return id;
+        }
+      } catch (secondError) {
+        console.warn("Second cancel attempt failed:", secondError.message);
+      }
+      
+      // Third attempt - try the cancel endpoint
+      try {
+        console.log("Trying third cancel approach - using cancel endpoint");
+        const cancelResponse = await api.put(`/contracts/${id}/cancel`);
+        console.log("Cancel via dedicated endpoint response:", cancelResponse);
+        
+        if (cancelResponse.data) {
+          toast.success('Contract request cancelled successfully');
+          return id;
+        }
+      } catch (thirdError) {
+        console.error("All cancel attempts failed");
+        return rejectWithValue("Failed to cancel contract - server could not process the request");
+      }
+      
+      return rejectWithValue('Could not cancel contract - unknown server error');
     } catch (error) {
+      console.error("Error cancelling contract:", error);
       const errorMessage = error.response?.data?.message || 'Failed to cancel contract request';
       toast.error(errorMessage);
       return rejectWithValue(errorMessage);
@@ -153,6 +196,10 @@ const contractRequestsSlice = createSlice({
       state.contractRequests = [];
       state.totalRequests = 0;
       sessionStorage.removeItem('contractRequests');
+    },
+    
+    clearError(state) {
+      state.error = null;
     },
     
     setCurrentRequest(state, action) {
@@ -239,6 +286,7 @@ export const {
   removeContractRequest, 
   updateContractRequest: updateContractRequestAction, 
   clearContractRequests,
+  clearError,
   setCurrentRequest
 } = contractRequestsSlice.actions;
 
