@@ -18,9 +18,26 @@ export const fetchContractRequests = createAsyncThunk(
   'contractRequests/fetchAll',
   async (_, { rejectWithValue }) => {
     try {
+      console.log("Fetching contract requests from API...");
       const response = await api.get('/contracts');
-      return response.data;
+      console.log("Contract API response:", response);
+      
+      // Handle different possible response formats
+      if (response.data && response.data.contracts) {
+        console.log("Found contracts array in response.data.contracts");
+        return response.data.contracts;
+      } else if (Array.isArray(response.data)) {
+        console.log("Response data is an array");
+        return response.data;
+      } else if (response.data && response.data.success && !response.data.contracts) {
+        console.log("Response has success but no contracts array, returning empty array");
+        return [];
+      } else {
+        console.warn("Unexpected response format:", response.data);
+        return [];
+      }
     } catch (error) {
+      console.error("Error fetching contract requests:", error);
       const errorMessage = error.response?.data?.message || 'Failed to fetch contract requests';
       toast.error(errorMessage);
       return rejectWithValue(errorMessage);

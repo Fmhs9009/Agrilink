@@ -31,7 +31,7 @@ router.post('/:id/progress', verifyToken, isFarmer, contractController.addProgre
 router.post('/:id/negotiate', verifyToken, contractController.negotiateContract);
 
 // Get contract details
-router.get('/:id/details', verifyToken, contractController.getContractDetails);
+router.get('/:id/details', contractController.getContractDetails);
 
 // Generate contract document
 router.get('/:id/document', verifyToken, contractController.generateContractDocument);

@@ -406,6 +406,7 @@ exports.acceptContract = catchAsyncErrors(async (req, res, next) => {
 
 // Get contract details
 exports.getContractDetails = catchAsyncErrors(async (req, res, next) => {
+    console.log("Eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
     try {
         const contract = await Contract.findById(req.params.id)
             .populate('crop', 'name description images category unit price organic certification')
@@ -777,7 +778,7 @@ exports.getContractStats = async (req, res) => {
         // Filter contracts based on user role
         if (userRole === 'farmer') {
             query.farmer = userId;
-        } else if (userRole === 'buyer') {
+        } else if (userRole === 'customer') {
             query.buyer = userId;
         }
         

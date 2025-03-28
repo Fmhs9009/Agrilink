@@ -1,11 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { 
-  fetchContractRequests, 
-  cancelContractRequest,
-  addContractRequest 
-} from '../../reducer/Slice/contractRequestsSlice';
+import { fetchContractRequests, cancelContractRequest } from '../../reducer/Slice/contractRequestsSlice';
 import { FaHandshake, FaCalendarAlt, FaMoneyBillWave,FaTractor, FaFileContract, FaCheck, FaTimes, FaClock, FaUser, FaMapMarkerAlt, FaSeedling, FaLeaf, FaClipboardList, FaDownload, FaPrint, FaExclamationTriangle } from 'react-icons/fa';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
@@ -25,68 +21,26 @@ const ContractDetail = () => {
     try {
       setIsLoading(true);
       console.log("Fetching contract with ID:", id);
+      const response = await api.get(`/contracts/${id}`);
+      console.log("API response:", response);
       
-      // First attempt: try /contracts/:id endpoint
-      try {
-        const response = await api.get(`/contracts/${id}`);
-        console.log("API response for /contracts/:id:", response);
-        
-        if (response.data && response.data.contract) {
-          console.log("Setting contract from response.data.contract");
-          setContract(response.data.contract);
-          return;
-        } else if (response.data && response.data.success) {
-          console.log("Setting contract from response.data");
-          setContract(response.data);
-          return;
-        }
-      } catch (firstError) {
-        console.warn("First contract fetch attempt failed:", firstError.message);
+      if (response.data && response.data.contract) {
+        console.log("Setting contract from response.data.contract");
+        setContract(response.data.contract);
+      } else if (response.data && response.data.success) {
+        console.log("Setting contract from response.data");
+        setContract(response.data);
+      } else {
+        console.error("Invalid data format returned from API:", response.data);
+        toast.error("Invalid contract data received from server");
       }
-      
-      // Second attempt: try /contracts/:id/details endpoint
-      try {
-        console.log("Trying alternate endpoint /contracts/:id/details");
-        const detailsResponse = await api.get(`/contracts/${id}/details`);
-        console.log("API response for /contracts/:id/details:", detailsResponse);
-        
-        if (detailsResponse.data && detailsResponse.data.contract) {
-          console.log("Setting contract from detailsResponse.data.contract");
-          setContract(detailsResponse.data.contract);
-          return;
-        } else if (detailsResponse.data) {
-          console.log("Setting contract from detailsResponse.data");
-          setContract(detailsResponse.data);
-          return;
-        }
-      } catch (secondError) {
-        console.warn("Second contract fetch attempt failed:", secondError.message);
-      }
-      
-      // Third attempt: try adding contract to redux manually by dispatching addContractRequest
-      try {
-        console.log("Attempting to fetch from server directly and add to Redux");
-        const manualResponse = await api.get(`/contracts/${id}`);
-        if (manualResponse.data) {
-          const contractData = manualResponse.data.contract || manualResponse.data;
-          console.log("Dispatching addContractRequest with data", contractData);
-          // Use the imported action creator
-          dispatch(addContractRequest(contractData));
-          setContract(contractData);
-          return;
-        }
-      } catch (thirdError) {
-        console.error("All contract fetch attempts failed");
-        toast.error(`Error fetching contract: ${thirdError.message}`);
-      }
-      
     } catch (error) {
       console.error("API error:", error);
       toast.error(`Error fetching contract: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
-  }, [id, dispatch]);
+  }, [id]);
 
   // First attempt - check if contract is in Redux store
   useEffect(() => {
@@ -132,28 +86,24 @@ const ContractDetail = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'approved':
-      case 'accepted':
         return (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800" role="status">
             <FaCheck className="mr-1" aria-hidden="true" /> Approved
           </span>
         );
       case 'rejected':
-      case 'declined':
         return (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800" role="status">
             <FaTimes className="mr-1" aria-hidden="true" /> Rejected
           </span>
         );
       case 'pending':
-      case 'requested':
         return (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800" role="status">
-            <FaClock className="mr-1" aria-hidden="true" /> {status === 'requested' ? 'Requested' : 'Pending'}
+            <FaClock className="mr-1" aria-hidden="true" /> Pending
           </span>
         );
       case 'completed':
-      case 'fulfilled':
         return (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800" role="status">
             <FaCheck className="mr-1" aria-hidden="true" /> Completed
@@ -275,15 +225,7 @@ const ContractDetail = () => {
           <div className="flex flex-col items-end">
             {getStatusBadge(contract.status)}
             <p className="text-sm text-gray-500 mt-1">
-              Requested on {contract.createdAt 
-                ? (() => {
-                    try {
-                      return new Date(contract.createdAt).toLocaleDateString();
-                    } catch (e) {
-                      return contract.createdAt || 'unknown date';
-                    }
-                  })()
-                : 'unknown date'}
+              Requested on {new Date(contract.createdAt).toLocaleDateString()}
             </p>
           </div>
         </div>
@@ -302,10 +244,10 @@ const ContractDetail = () => {
               <div>
                 <p className="font-medium">Contract Value</p>
                 <p className="text-xl font-bold text-green-600">
-                  ₹{contract.totalAmount?.toLocaleString() || (contract.quantity * contract.pricePerUnit).toLocaleString()}
+                  ₹{(contract.quantity * contract.proposedPrice).toLocaleString()}
                 </p>
                 <p className="text-sm text-gray-600">
-                  {contract.quantity} {contract.unit || 'units'} at ₹{contract.pricePerUnit} per unit
+                  {contract.quantity} {contract.product?.unit || 'units'} at ₹{contract.proposedPrice} per unit
                 </p>
               </div>
             </div>
@@ -313,74 +255,58 @@ const ContractDetail = () => {
             <div className="flex items-start">
               <FaCalendarAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
-                <p className="font-medium">Delivery Date</p>
-                <p>
-                  {contract.deliveryDate 
-                    ? (() => {
-                        try {
-                          return new Date(contract.deliveryDate).toLocaleDateString();
-                        } catch (e) {
-                          return contract.deliveryDate || 'Not specified';
-                        }
-                      })()
-                    : 'Not specified'}
-                </p>
+                <p className="font-medium">Requested Delivery Date</p>
+                <p>{new Date(contract.requestedDeliveryDate).toLocaleDateString()}</p>
               </div>
             </div>
 
-            {contract.expectedHarvestDate && (
-              <div className="flex items-start">
-                <FaCalendarAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-                <div>
-                  <p className="font-medium">Expected Harvest Date</p>
-                  <p>
-                    {(() => {
-                      try {
-                        return new Date(contract.expectedHarvestDate).toLocaleDateString();
-                      } catch (e) {
-                        return contract.expectedHarvestDate || 'Not specified';
-                      }
-                    })()}
-                  </p>
-                </div>
+            <div className="flex items-start">
+              <FaFileContract className="text-green-600 mr-3 mt-1" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Contract Duration</p>
+                <p>{contract.contractDuration} days</p>
               </div>
-            )}
+            </div>
 
             <div className="flex items-start">
               <FaMoneyBillWave className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
                 <p className="font-medium">Payment Terms</p>
-                {typeof contract.paymentTerms === 'string' ? (
-                  <p>{contract.paymentTerms}</p>
-                ) : (
-                  <div className="text-sm space-y-1">
-                    {contract.paymentTerms?.advancePercentage > 0 && (
-                      <p>Advance: {contract.paymentTerms.advancePercentage}%</p>
-                    )}
-                    {contract.paymentTerms?.midtermPercentage > 0 && (
-                      <p>Midterm: {contract.paymentTerms.midtermPercentage}%</p>
-                    )}
-                    {contract.paymentTerms?.finalPercentage > 0 && (
-                      <p>Final: {contract.paymentTerms.finalPercentage}%</p>
-                    )}
-                  </div>
-                )}
+                <p>{contract.paymentTerms === 'standard' 
+                    ? 'Standard (50% advance, 50% on delivery)' 
+                    : contract.paymentTerms === 'milestone' 
+                    ? 'Milestone-based payments'
+                    : contract.paymentTerms === 'delivery'
+                    ? 'Full payment on delivery'
+                    : contract.paymentTerms === 'advance'
+                    ? 'Full payment in advance (10% discount)'
+                    : contract.paymentTerms}
+                </p>
               </div>
             </div>
 
             <div className="flex items-start">
               <FaClipboardList className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
-                <p className="font-medium">Quality Requirements</p>
-                <p>{contract.qualityRequirements || contract.qualityStandards || 'Standard quality'}</p>
+                <p className="font-medium">Quality Standards</p>
+                <p>{contract.qualityStandards === 'market' 
+                    ? 'Market Standard' 
+                    : contract.qualityStandards === 'premium' 
+                    ? 'Premium Quality'
+                    : contract.qualityStandards === 'organic'
+                    ? 'Certified Organic'
+                    : contract.qualityStandards === 'custom'
+                    ? 'Custom Standards'
+                    : contract.qualityStandards}
+                </p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Farmer & Crop Details */}
-        <section aria-labelledby="farmer-crop-details-heading">
-          <h3 id="farmer-crop-details-heading" className="text-lg font-semibold mb-4 flex items-center">
+        {/* Farmer & Product Details */}
+        <section aria-labelledby="farmer-details-heading">
+          <h3 id="farmer-details-heading" className="text-lg font-semibold mb-4 flex items-center">
             <FaUser className="mr-2 text-green-600" aria-hidden="true" /> Farmer & Crop Details
           </h3>
           
@@ -389,40 +315,66 @@ const ContractDetail = () => {
               <FaUser className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
                 <p className="font-medium">Farmer</p>
-                <p>{contract.farmer?.name || contract.farmer?.email || 'Local Farmer'}</p>
-              </div>
-            </div>
-
-            <div className="flex items-start">
-              <FaUser className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Buyer</p>
-                <p>{contract.buyer?.name || contract.buyer?.email || 'Anonymous Buyer'}</p>
-              </div>
-            </div>
-
-            <div className="flex items-start">
-              <FaSeedling className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Crop</p>
-                <p>{contract.crop?.name || 'Agricultural product'}</p>
-                {contract.crop?.images && contract.crop.images.length > 0 && (
-                  <img 
-                    src={contract.crop.images[0]} 
-                    alt={contract.crop.name || 'Crop'} 
-                    className="mt-2 w-20 h-20 object-cover rounded-md"
-                  />
+                <p>{contract.farmer?.name || 'Local Farmer'}</p>
+                {contract.farmer?.rating && (
+                  <div className="flex items-center mt-1" aria-label={`Farmer rating: ${contract.farmer.rating.toFixed(1)} out of 5 stars`}>
+                    {[...Array(5)].map((_, i) => (
+                      <span key={i} className={i < Math.round(contract.farmer.rating) ? 'text-yellow-400' : 'text-gray-300'} aria-hidden="true">★</span>
+                    ))}
+                    <span className="ml-1 text-sm text-gray-600">({contract.farmer.rating.toFixed(1)})</span>
+                  </div>
                 )}
               </div>
             </div>
 
-            <div className="flex items-start">
-              <FaMoneyBillWave className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Market Price</p>
-                <p>₹{contract.crop?.price || 'N/A'}</p>
+            {contract.farmer?.location && (
+              <div className="flex items-start">
+                <FaMapMarkerAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
+                <div>
+                  <p className="font-medium">Farm Location</p>
+                  <p>{contract.farmer.location}</p>
+                </div>
               </div>
-            </div>
+            )}
+
+            {contract.product?.currentGrowthStage && (
+              <div className="flex items-start">
+                <FaSeedling className="text-green-600 mr-3 mt-1" aria-hidden="true" />
+                <div>
+                  <p className="font-medium">Current Growth Stage</p>
+                  <p>{contract.product.currentGrowthStage}</p>
+                </div>
+              </div>
+            )}
+
+            {contract.product?.farmingPractices && (
+              <div className="flex items-start">
+                <FaTractor className="text-green-600 mr-3 mt-1" aria-hidden="true" />
+                <div>
+                  <p className="font-medium">Farming Practices</p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {contract.product.farmingPractices.map((practice, index) => (
+                      <span 
+                        key={index}
+                        className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full"
+                      >
+                        {practice}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {contract.product?.organic && (
+              <div className="flex items-start">
+                <FaLeaf className="text-green-600 mr-3 mt-1" aria-hidden="true" />
+                <div>
+                  <p className="font-medium">Organic Certification</p>
+                  <p>{contract.product.certification || 'Organic Certified'}</p>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -449,38 +401,22 @@ const ContractDetail = () => {
             </div>
             <div>
               <p className="font-medium">Contract Requested</p>
-              <p className="text-sm text-gray-600">
-                {contract.requestDate || contract.createdAt 
-                  ? (() => {
-                      try {
-                        return new Date(contract.requestDate || contract.createdAt).toLocaleString();
-                      } catch (e) {
-                        return (contract.requestDate || contract.createdAt) || 'Date not available';
-                      }
-                    })()
-                  : 'Date not available'}
-              </p>
+              <p className="text-sm text-gray-600">{new Date(contract.createdAt).toLocaleString()}</p>
             </div>
           </div>
 
-          {contract.status !== 'pending' && contract.status !== 'requested' && (
+          {contract.status !== 'pending' && (
             <div className="relative pl-12 pb-8">
               <div className="absolute left-0 rounded-full bg-blue-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
-                {contract.status === 'approved' || contract.status === 'accepted' ? <FaCheck /> : <FaTimes />}
+                {contract.status === 'approved' ? <FaCheck /> : <FaTimes />}
               </div>
               <div>
                 <p className="font-medium">
-                  {contract.status === 'approved' || contract.status === 'accepted' ? 'Contract Approved' : 'Contract Rejected'}
+                  {contract.status === 'approved' ? 'Contract Approved' : 'Contract Rejected'}
                 </p>
                 <p className="text-sm text-gray-600">
-                  {contract.statusUpdateDate || contract.updatedAt
-                    ? (() => {
-                        try {
-                          return new Date(contract.statusUpdateDate || contract.updatedAt).toLocaleString();
-                        } catch (e) {
-                          return 'Date not available';
-                        }
-                      })()
+                  {contract.statusUpdateDate 
+                    ? new Date(contract.statusUpdateDate).toLocaleString()
                     : 'Date not available'}
                 </p>
                 {contract.farmerNotes && (
@@ -492,7 +428,7 @@ const ContractDetail = () => {
             </div>
           )}
 
-          {(contract.status === 'completed' || contract.status === 'fulfilled') && (
+          {contract.status === 'completed' && (
             <div className="relative pl-12">
               <div className="absolute left-0 rounded-full bg-green-600 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
                 <FaCheck />
@@ -501,13 +437,7 @@ const ContractDetail = () => {
                 <p className="font-medium">Contract Completed</p>
                 <p className="text-sm text-gray-600">
                   {contract.completionDate 
-                    ? (() => {
-                        try {
-                          return new Date(contract.completionDate).toLocaleString();
-                        } catch (e) {
-                          return 'Date not available';
-                        }
-                      })()
+                    ? new Date(contract.completionDate).toLocaleString()
                     : 'Date not available'}
                 </p>
               </div>
@@ -526,7 +456,7 @@ const ContractDetail = () => {
           Back to All Contracts
         </Link>
         
-        {(contract.status === 'pending' || contract.status === 'requested') && (
+        {contract.status === 'pending' && (
           <button
             className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
             onClick={handleCancelContract}
@@ -543,7 +473,7 @@ const ContractDetail = () => {
           </button>
         )}
         
-        {(contract.status === 'approved' || contract.status === 'accepted') && (
+        {contract.status === 'approved' && (
           <div className="space-x-2">
             <button
               className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"

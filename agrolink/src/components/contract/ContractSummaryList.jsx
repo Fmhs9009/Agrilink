@@ -1,87 +1,87 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  FaLeaf, 
-  FaCalendarAlt, 
-  FaMapMarkerAlt, 
-  FaSearch, 
-  FaFilter,
-  FaSort,
-  FaChevronDown,
-  FaChevronUp,
-  FaTimes,
-  FaCheck,
-  FaExchangeAlt,
-  FaHandshake,
-  FaClipboardCheck,
-  FaTractor,
-  FaUser,
-  FaClock,
-  FaInfoCircle,
-  FaArrowRight
-} from 'react-icons/fa';
+import { FaFilter, FaSearch, FaSort, FaHandshake, FaCalendarAlt, FaLeaf, FaArrowRight, FaCheck, FaTimes, FaExchangeAlt, FaClipboardCheck } from 'react-icons/fa';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import Loader from '../layout/Loader';
-import toast from 'react-hot-toast';
-import { contractAPI } from '../../services/api';
 
 const ContractSummaryList = ({ 
   title = "Contracts", 
+  userRole, 
   initialContracts = [], 
-  limit = 5,
-  showFilters = true,
+  limit = 5, 
   showViewAll = true,
-  userRole = 'buyer'
+  showFilters = true 
 }) => {
-  const [contracts, setContracts] = useState(initialContracts);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [contracts, setContracts] = useState([]);
+  const [filteredContracts, setFilteredContracts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
-  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
 
   useEffect(() => {
-    if (initialContracts.length === 0) {
-      fetchContracts();
-    }
-  }, []);
+    setContracts(initialContracts);
+    setFilteredContracts(initialContracts);
+  }, [initialContracts]);
 
-  const fetchContracts = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = userRole === 'farmer' 
-        ? await contractAPI.getByFarmer()
-        : await contractAPI.getByBuyer();
-      
-      if (response.success) {
-        setContracts(response.contracts || []);
-      } else {
-        setError('Failed to fetch contracts');
-        toast.error('Failed to load contracts');
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to fetch contracts');
-      toast.error('Failed to load contracts');
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    applyFilters();
+  }, [searchTerm, statusFilter, sortBy, sortOrder, contracts]);
+
+  const applyFilters = () => {
+    let result = [...contracts];
+    
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      result = result.filter(contract => contract.status === statusFilter);
     }
+    
+    // Apply search
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(contract => 
+        (contract.crop?.name.toLowerCase().includes(term)) ||
+        (contract.farmer?.name.toLowerCase().includes(term)) ||
+        (contract.status.toLowerCase().includes(term))
+      );
+    }
+    
+    // Apply sorting
+    result.sort((a, b) => {
+      let compareValue = 0;
+      
+      switch (sortBy) {
+        case 'date':
+          compareValue = new Date(a.createdAt) - new Date(b.createdAt);
+          break;
+        case 'price':
+          compareValue = (a.totalAmount || 0) - (b.totalAmount || 0);
+          break;
+        case 'status':
+          compareValue = a.status.localeCompare(b.status);
+          break;
+        default:
+          compareValue = 0;
+      }
+      
+      return sortOrder === 'asc' ? compareValue : -compareValue;
+    });
+    
+    setFilteredContracts(result);
   };
 
+  // Status color mapper
   const getStatusColor = (status) => {
     switch (status) {
-      case 'requested': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'negotiating': return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'active': return 'bg-green-100 text-green-800 border-green-200';
-      case 'completed': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+      case 'requested': return 'bg-yellow-100 text-yellow-800';
+      case 'negotiating': return 'bg-purple-100 text-purple-800';
+      case 'active': return 'bg-green-100 text-green-800';
+      case 'completed': return 'bg-blue-100 text-blue-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
-
+  
+  // Status icon mapper
   const getStatusIcon = (status) => {
     switch (status) {
       case 'requested': return <FaClipboardCheck />;
@@ -93,234 +93,162 @@ const ContractSummaryList = ({
     }
   };
 
-  const filteredContracts = contracts
-    .filter(contract => {
-      const matchesSearch = contract.crop?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           contract.farmer?.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || contract.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'date') {
-        return sortOrder === 'desc' 
-          ? new Date(b.createdAt) - new Date(a.createdAt)
-          : new Date(a.createdAt) - new Date(b.createdAt);
-      }
-      if (sortBy === 'amount') {
-        return sortOrder === 'desc'
-          ? b.totalAmount - a.totalAmount
-          : a.totalAmount - b.totalAmount;
-      }
-      return 0;
-    })
-    .slice(0, limit);
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader />
-      </div>
-    );
-  }
+  // Display only the limited number of contracts
+  const displayedContracts = filteredContracts.slice(0, limit);
 
   return (
-    <div className="bg-white rounded-lg">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-xl font-bold text-gray-800">{title}</h2>
-          <p className="text-gray-500 text-sm mt-1">
-            {filteredContracts.length} contract{filteredContracts.length !== 1 ? 's' : ''} found
-          </p>
-        </div>
-        
-        {showFilters && (
-          <div className="flex flex-wrap gap-3">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search contracts..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent w-64"
-              />
-              <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+    <div>
+      {title && <h2 className="text-xl font-bold text-gray-800 mb-4">{title}</h2>}
+      
+      {showFilters && (
+        <div className="mb-6 space-y-4">
+          <div className="flex flex-col md:flex-row space-y-3 md:space-y-0 md:space-x-4">
+            {/* Search box */}
+            <div className="flex-grow">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <FaSearch className="text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by crop, farmer, or status..."
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
             </div>
             
-            <button
-              onClick={() => setShowFiltersPanel(!showFiltersPanel)}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-            >
-              <FaFilter className="mr-2" />
-              Filters
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Filters Panel */}
-      {showFilters && showFiltersPanel && (
-        <div className="bg-gray-50 rounded-lg p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Status filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              >
-                <option value="all">All Status</option>
-                <option value="requested">Requested</option>
-                <option value="negotiating">Negotiating</option>
-                <option value="active">Active</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+              <label htmlFor="status-filter" className="sr-only">Status</label>
+              <div className="flex items-center border border-gray-300 rounded-md">
+                <div className="px-3 py-2 bg-gray-50 text-gray-500 border-r border-gray-300">
+                  <FaFilter />
+                </div>
+                <select
+                  id="status-filter"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="block w-full pl-3 pr-10 py-2 text-base border-0 focus:ring-0 focus:outline-none"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="requested">Requested</option>
+                  <option value="negotiating">Negotiating</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
             </div>
             
+            {/* Sort by */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              >
-                <option value="date">Date</option>
-                <option value="amount">Amount</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Order</label>
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              >
-                <option value="desc">Newest First</option>
-                <option value="asc">Oldest First</option>
-              </select>
+              <label htmlFor="sort-by" className="sr-only">Sort by</label>
+              <div className="flex items-center border border-gray-300 rounded-md">
+                <div className="px-3 py-2 bg-gray-50 text-gray-500 border-r border-gray-300">
+                  <FaSort />
+                </div>
+                <select
+                  id="sort-by"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="block w-full pl-3 pr-10 py-2 text-base border-0 focus:ring-0 focus:outline-none"
+                >
+                  <option value="date">Date</option>
+                  <option value="price">Price</option>
+                  <option value="status">Status</option>
+                </select>
+                <button
+                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                  className="px-3 py-2 text-gray-500 hover:text-gray-700"
+                >
+                  {sortOrder === 'asc' ? <FaSort /> : <FaSort />}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
-
-      {/* Contracts List */}
-      <div className="space-y-4">
-        {filteredContracts.map((contract) => {
-          const statusClass = getStatusColor(contract.status);
-          const statusIcon = getStatusIcon(contract.status);
-          
-          return (
-            <Link 
-              key={contract._id} 
-              to={`/contracts/${contract._id}`}
-              className="block group"
+      
+      {displayedContracts.length === 0 ? (
+        <div className="bg-white rounded-lg p-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+            <FaHandshake className="h-8 w-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Contracts Found</h3>
+          <p className="text-gray-500 mb-4">
+            {searchTerm || statusFilter !== 'all' 
+              ? "No contracts match your current search criteria." 
+              : userRole === 'farmer'
+                ? "You don't have any active contracts yet. Start by receiving offers from buyers."
+                : "You don't have any contracts yet. Browse products to make offers to farmers."
+            }
+          </p>
+          {searchTerm || statusFilter !== 'all' ? (
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setStatusFilter('all');
+              }}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none"
             >
-              <div className="border border-gray-200 hover:border-green-500 rounded-lg p-4 transition-all hover:shadow-md">
-                <div className="flex items-start">
-                  {/* Product Image */}
-                  <div className="relative w-28 h-28 flex-shrink-0 mr-4">
-                    {contract.crop?.images && contract.crop.images.length > 0 ? (
-                      <img 
-                        src={contract.crop.images[0].url} 
-                        alt={contract.crop.name}
-                        className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform duration-300"
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = `https://source.unsplash.com/300x300/?${contract.crop.name},farm,agriculture`;
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex items-center justify-center">
-                        <FaLeaf className="text-green-500 text-3xl" />
+              Clear Filters
+            </button>
+          ) : (
+            userRole !== 'farmer' && (
+              <Link 
+                to="/products" 
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none"
+              >
+                <FaLeaf className="mr-2" />
+                Browse Products
+              </Link>
+            )
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {displayedContracts.map((contract) => (
+            <Link key={contract._id} to={`/contracts/${contract._id}`} className="block">
+              <div className="border border-gray-200 hover:border-green-500 rounded-lg p-4 transition-colors">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-3">
+                    <div className={`p-2 ${getStatusColor(contract.status)} rounded-lg`}>
+                      {getStatusIcon(contract.status)}
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">{contract.crop?.name}</h3>
+                      <div className="flex items-center text-sm text-gray-500 mt-1">
+                        <FaLeaf className="mr-1" />
+                        <span>Farmer: {contract.farmer?.name}</span>
                       </div>
-                    )}
-                    <div className={`absolute top-2 right-2 ${statusClass} px-2 py-1 rounded-full text-xs font-medium flex items-center`}>
-                      {statusIcon}
-                      <span className="ml-1">{contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}</span>
+                      <div className="flex items-center text-sm text-gray-500 mt-1">
+                        <FaCalendarAlt className="mr-1" />
+                        <span>{formatDate(contract.createdAt)}</span>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Contract Details */}
-                  <div className="flex-grow">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-medium text-gray-900 text-lg">{contract.crop?.name}</h3>
-                        <div className="flex items-center text-sm text-gray-500 mt-1">
-                          <FaUser className="mr-1" />
-                          <span>{contract.farmer?.name}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-green-600 font-bold text-lg">₹{formatCurrency(contract.totalAmount)}</div>
-                        <div className="text-sm text-gray-500 mt-1">
-                          {contract.quantity} {contract.unit}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-3 flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <div className="text-sm text-gray-600">
-                          <FaCalendarAlt className="inline mr-1" />
-                          Created: {formatDate(contract.createdAt)}
-                        </div>
-                        {contract.expectedHarvestDate && (
-                          <div className="text-sm text-gray-600">
-                            <FaTractor className="inline mr-1" />
-                            Harvest: {formatDate(contract.expectedHarvestDate)}
-                          </div>
-                        )}
-                        {contract.farmer?.location && (
-                          <div className="text-sm text-gray-600">
-                            <FaMapMarkerAlt className="inline mr-1" />
-                            {contract.farmer.location}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-sm text-green-600 font-medium group-hover:text-green-700">
-                        View Details →
-                      </div>
-                    </div>
+                  <div className="text-right">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(contract.status)}`}>
+                      {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
+                    </span>
+                    <p className="text-lg font-bold text-green-600 mt-1">₹{formatCurrency(contract.totalAmount)}</p>
                   </div>
                 </div>
               </div>
             </Link>
-          );
-        })}
-      </div>
-
-      {/* Empty State */}
-      {filteredContracts.length === 0 && (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 mb-3">
-            <FaInfoCircle className="h-6 w-6 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">No contracts found</h3>
-          <p className="text-gray-500 mb-4">Try adjusting your search or filters to find what you're looking for.</p>
-          <button
-            onClick={() => {
-              setSearchTerm('');
-              setStatusFilter('all');
-              setShowFiltersPanel(false);
-            }}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-          >
-            Clear Filters
-          </button>
+          ))}
         </div>
       )}
-
-      {/* View All Link */}
-      {showViewAll && filteredContracts.length > 0 && (
-        <div className="mt-6 text-center">
+      
+      {showViewAll && filteredContracts.length > limit && (
+        <div className="text-center mt-4">
           <Link 
             to="/contracts" 
-            className="inline-flex items-center text-green-600 hover:text-green-800 font-medium"
+            className="text-green-600 hover:text-green-800 font-medium inline-flex items-center"
           >
-            View All Contracts
-            <FaArrowRight className="ml-2" />
+            View All <FaArrowRight className="ml-2" />
           </Link>
         </div>
       )}
