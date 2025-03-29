@@ -46,7 +46,6 @@ const ContractDetailPage = lazy(() => import("./pages/contracts/ContractDetailPa
 const ContractRespondPage = lazy(() => import("./pages/contracts/ContractRespondPage"));
 
 // Contract components
-const ContractManagement = lazy(() => import("./components/contract/ContractManagement"));
 const ContractRequestsList = lazy(() => import("./components/contract/ContractRequestsList"));
 
 // Loading fallback component
@@ -278,7 +277,7 @@ function App() {
               <Route path="manage" element={
                 <ProtectedRoute>
                   <Suspense fallback={<PageLoader />}>
-                    <ContractManagement />
+                    <ContractsPage />
                   </Suspense>
                 </ProtectedRoute>
               } />

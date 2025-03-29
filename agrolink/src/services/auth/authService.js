@@ -76,6 +76,8 @@ class AuthService {
     // Clear from both storages
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
+    
+
   }
 
   // User data management

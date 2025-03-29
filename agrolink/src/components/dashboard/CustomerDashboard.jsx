@@ -395,12 +395,14 @@ const InvestmentBreakdown = ({ contracts }) => {
     );
   }
 
-  // Calculate investment breakdown by crop category
-  const investmentByCategory = contracts.reduce((acc, contract) => {
-    const category = contract.crop?.category || 'Other';
-    acc[category] = (acc[category] || 0) + (contract.totalAmount || 0);
-    return acc;
-  }, {});
+  // Calculate investment breakdown by crop category - exclude cancelled contracts
+  const investmentByCategory = contracts
+    .filter(contract => contract.status !== 'cancelled')
+    .reduce((acc, contract) => {
+      const category = contract.crop?.category || 'Other';
+      acc[category] = (acc[category] || 0) + (contract.totalAmount || 0);
+      return acc;
+    }, {});
 
   // Define categories with their colors and icons
   const categories = [
@@ -657,12 +659,14 @@ const CustomerDashboard = () => {
                 return harvestDate > today;
               });
               
-              // Update stats
+              // Update stats - exclude cancelled contracts from total value
               setStats(prev => ({
                 ...prev,
                 activeContracts: activeContracts.length,
                 upcomingHarvests: upcomingHarvests.length,
-                totalContractValue: contractsData.reduce((sum, c) => sum + (c.totalAmount || 0), 0)
+                totalContractValue: contractsData
+                  .filter(c => c.status !== 'cancelled')
+                  .reduce((sum, c) => sum + (c.totalAmount || 0), 0)
               }));
             } else {
               setContracts([]);

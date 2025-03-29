@@ -76,35 +76,36 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
   const fetchContracts = async () => {
     try {
       setLoading(true);
-      
-      // Determine if user is a buyer or farmer and use appropriate API call
-      const userRole = user?.role || 'buyer'; // Default to buyer if role not specified
-      const apiMethod = userRole === 'farmer' ? contractAPI.getByFarmer : contractAPI.getByBuyer;
-      
-      const response = await apiMethod(user._id, {
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-        sortBy,
-        sortOrder,
-        page: currentPage,
-        limit,
-        search: searchQuery
-      });
+      const response = await contractAPI.getAll();
       
       if (response.success) {
-        setContracts(response.contracts || []);
-        setTotalPages(response.pagination?.totalPages || 1);
-        setError(null);
-      } else {
-        console.warn("Failed to load contracts:", response.message);
-        setContracts([]);
-        setError(response.message || "Failed to load contracts");
-        toast.error("Failed to load contracts");
+        const contractsData = response.contracts || [];
+        setContracts(contractsData);
+        
+        // Calculate stats excluding cancelled contracts
+        const nonCancelledContracts = contractsData.filter(c => c.status !== 'cancelled');
+        const activeContracts = contractsData.filter(c => c.status === 'active');
+        
+        const totalValue = nonCancelledContracts.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+        const averageValue = nonCancelledContracts.length > 0 
+          ? totalValue / nonCancelledContracts.length 
+          : 0;
+        
+        setStats({
+          total: contractsData.length,
+          byStatus: {
+            active: activeContracts.length,
+            pending: contractsData.filter(c => c.status === 'pending').length,
+            completed: contractsData.filter(c => c.status === 'completed').length,
+            cancelled: contractsData.filter(c => c.status === 'cancelled').length
+          },
+          totalValue,
+          averageValue
+        });
       }
-    } catch (err) {
-      console.error("Error fetching contracts:", err);
-      setContracts([]);
-      setError("An error occurred while fetching contracts");
-      toast.error("Failed to load contracts");
+    } catch (error) {
+      console.error('Error fetching contracts:', error);
+      setError('Failed to load contracts');
     } finally {
       setLoading(false);
     }

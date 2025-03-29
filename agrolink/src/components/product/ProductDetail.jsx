@@ -1035,7 +1035,7 @@ const ProductDetail = () => {
                         type="button"
                         onClick={() => {
                           setShowContractForm(false);
-                          navigate('/contracts/manage');
+                          navigate('/contracts');
                         }}
                         className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                       >

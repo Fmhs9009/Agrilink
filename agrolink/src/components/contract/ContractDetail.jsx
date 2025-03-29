@@ -508,7 +508,7 @@ const ContractDetail = () => {
                 <p>{contract.crop?.name || 'Agricultural product'}</p>
                 {contract.crop?.images && contract.crop.images.length > 0 && (
                   <img 
-                    src={contract.crop.images[0]} 
+                    src={contract.crop.images[0].url} 
                     alt={contract.crop.name || 'Crop'} 
                     className="mt-2 w-20 h-20 object-cover rounded-md"
                   />

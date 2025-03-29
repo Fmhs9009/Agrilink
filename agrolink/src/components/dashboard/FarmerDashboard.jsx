@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { FaChartLine, FaUsers, FaShoppingCart, FaWarehouse, FaMoneyBillWave, FaCalendarCheck, FaHandshake, FaSeedling, FaClipboardList, FaTractor, FaChartBar, FaMapMarkerAlt, FaLeaf, FaEdit, FaEye, FaTrash } from 'react-icons/fa';
+import { FaChartLine, FaUsers, FaShoppingCart, FaWarehouse, FaMoneyBillWave, FaCalendarCheck, FaHandshake, FaSeedling, FaClipboardList, FaTractor, FaChartBar, FaMapMarkerAlt, FaLeaf, FaEdit, FaEye, FaTrash, FaClock } from 'react-icons/fa';
 import { useApi } from '../../hooks/useApi';
 import { contractAPI, productAPI } from '../../services/api';
 import LoadingSpinner from '../common/LoadingSpinner';
@@ -58,7 +58,7 @@ const FarmerDashboardOverview = ({ data }) => (
       color="bg-green-500"
     />
     <StatCard
-      icon={FaCalendarCheck}
+      icon={FaClock}
       title="Pending Contracts"
       value={data?.stats?.pendingContracts || 0}
       color="bg-yellow-500"
@@ -435,10 +435,9 @@ const FarmerDashboard = () => {
       const pendingContracts = contracts.filter(c => c?.status === 'pending').length;
       const completedContracts = contracts.filter(c => c?.status === 'completed').length;
       
-      const totalRevenue = contracts.reduce((sum, c) => {
-        const amount = c?.status === 'completed' ? (c?.totalAmount || 0) : 0;
-        return sum + amount;
-      }, 0);
+      const totalRevenue = contracts
+        .filter(c => c?.status === 'completed' && c?.status !== 'cancelled')
+        .reduce((sum, c) => sum + (c?.totalAmount || 0), 0);
 
       return {
         stats: {
