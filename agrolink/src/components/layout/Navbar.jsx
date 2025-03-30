@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { logout } from '../../reducer/Slice/authSlice';
-import { FaUser, FaShoppingCart, FaHeart, FaBars, FaTimes } from 'react-icons/fa';
+import { FaUser, FaBars, FaTimes } from 'react-icons/fa';
 import logo from '../../assets/Logo.png';
 
 const Navbar = () => {
@@ -55,12 +55,6 @@ const Navbar = () => {
           <div className="hidden md:flex md:items-center md:space-x-4">
             {isAuthenticated ? (
               <>
-                <Link to="/cart" className="text-gray-700 hover:text-green-600">
-                  <FaShoppingCart className="h-6 w-6" />
-                </Link>
-                <Link to="/wishlist" className="text-gray-700 hover:text-green-600">
-                  <FaHeart className="h-6 w-6" />
-                </Link>
                 <div className="relative profile-dropdown">
                   <button
                     onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
@@ -155,18 +149,6 @@ const Navbar = () => {
             </Link>
             {isAuthenticated ? (
               <>
-                <Link
-                  to="/cart"
-                  className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-green-600 hover:bg-green-50"
-                >
-                  Cart
-                </Link>
-                <Link
-                  to="/wishlist"
-                  className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-green-600 hover:bg-green-50"
-                >
-                  Wishlist
-                </Link>
                 <Link
                   to="/dashboard"
                   className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-green-600 hover:bg-green-50"

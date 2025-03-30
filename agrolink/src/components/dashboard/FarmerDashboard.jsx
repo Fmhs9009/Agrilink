@@ -92,54 +92,64 @@ const RecentContracts = ({ contracts }) => (
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {contracts?.length > 0 ? (
-            contracts.map((contract) => (
-              <tr key={contract._id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {contract.contractId}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {contract.product.name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {contract.buyer.name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={getStatusBadge(contract.status)}>
-                    {contract.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  ₹{formatCurrency(contract.totalAmount)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatDate(contract.createdAt)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <Link 
-                    to={`/contracts/${contract._id}`}
-                    className="text-blue-600 hover:text-blue-800 mr-3"
-                  >
-                    View
-                  </Link>
-                  {contract.status === 'pending' && (
-                    <>
-                      <button 
-                        className="text-green-600 hover:text-green-800 mr-3"
-                        onClick={() => {/* Handle accept */}}
-                      >
-                        Accept
-                      </button>
-                      <button 
-                        className="text-red-600 hover:text-red-800"
-                        onClick={() => {/* Handle reject */}}
-                      >
-                        Reject
-                      </button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))
+            contracts.map((contract) => {
+              // Handle different formats of data
+              // The product might be an ID or an object, same for buyer
+              const productName = contract.product?.name || 
+                                  (contract.productId ? 'Product ' + contract.productId : 'Unknown Product');
+              
+              const buyerName = contract.buyer?.name || 
+                               (contract.buyerId ? 'Buyer ' + contract.buyerId : 'Unknown Buyer');
+              
+              return (
+                <tr key={contract._id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {contract.contractId || contract._id}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {productName}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {buyerName}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={getStatusBadge(contract.status)}>
+                      {contract.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ₹{formatCurrency(contract.totalAmount || 0)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatDate(contract.createdAt)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <Link 
+                      to={`/contracts/${contract._id}`}
+                      className="text-blue-600 hover:text-blue-800 mr-3"
+                    >
+                      View
+                    </Link>
+                    {contract.status === 'pending' && (
+                      <>
+                        <button 
+                          className="text-green-600 hover:text-green-800 mr-3"
+                          onClick={() => {/* Handle accept */}}
+                        >
+                          Accept
+                        </button>
+                        <button 
+                          className="text-red-600 hover:text-red-800"
+                          onClick={() => {/* Handle reject */}}
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })
           ) : (
             <tr>
               <td colSpan="7" className="px-6 py-4 text-center text-sm text-gray-500">
@@ -415,29 +425,75 @@ const FarmerDashboard = () => {
         productsRes = user?._id ? await productAPI.getByFarmer(user._id) : { data: [] };
       }
       
-      const contractsRes = await contractAPI.getAll();
-      
-      console.log("Dashboard products response:", productsRes);
-      console.log("Dashboard contracts response:", contractsRes);
+      // Try to fetch contracts from farmer's endpoint first
+      console.log("Dashboard: Fetching farmer contracts for ID:", user?._id);
+      const contractsRes = await contractAPI.getByFarmer(user?._id);
+      console.log("Farmer contracts API response:", contractsRes);
 
-      // Ensure data is in the expected format
+      // Ensure data is in the expected format for products
       const products = Array.isArray(productsRes.data) ? productsRes.data : 
                       (productsRes.data?.products || []);
       
-      const contracts = Array.isArray(contractsRes.data) ? contractsRes.data : 
-                       (contractsRes.data?.contracts || []);
+      // Handle different possible contract response formats
+      let contracts = [];
       
-      console.log("Dashboard processed products:", products);
+      if (Array.isArray(contractsRes)) {
+        // If response is already an array
+        contracts = contractsRes;
+      } else if (contractsRes.contracts && Array.isArray(contractsRes.contracts)) {
+        // If contracts property exists at root level
+        contracts = contractsRes.contracts;
+      } else if (contractsRes.data && Array.isArray(contractsRes.data)) {
+        // If data property is an array
+        contracts = contractsRes.data;
+      } else if (contractsRes.data && contractsRes.data.contracts && Array.isArray(contractsRes.data.contracts)) {
+        // If contracts is nested under data
+        contracts = contractsRes.data.contracts;
+      }
+      
       console.log("Dashboard processed contracts:", contracts);
       
-      // Now safely use array methods
+      if (contracts.length === 0) {
+        console.log("No contracts found for farmer, trying general endpoint as fallback");
+        // If no contracts found, try the general endpoint
+        const allContractsRes = await contractAPI.getAll();
+        console.log("All contracts response:", allContractsRes);
+        
+        // Extract contracts from the general response
+        if (Array.isArray(allContractsRes)) {
+          contracts = allContractsRes;
+        } else if (allContractsRes.contracts && Array.isArray(allContractsRes.contracts)) {
+          contracts = allContractsRes.contracts;
+        } else if (allContractsRes.data && Array.isArray(allContractsRes.data)) {
+          contracts = allContractsRes.data;
+        } else if (allContractsRes.data && allContractsRes.data.contracts && Array.isArray(allContractsRes.data.contracts)) {
+          contracts = allContractsRes.data.contracts;
+        }
+        
+        // Filter for this farmer's contracts if we found any
+        if (contracts.length > 0 && user?._id) {
+          console.log("Filtering general contracts for this farmer");
+          // Filter by farmerId or farmer._id depending on the data structure
+          contracts = contracts.filter(c => 
+            (c.farmerId === user._id) || 
+            (c.farmer && (c.farmer._id === user._id || c.farmer === user._id))
+          );
+        }
+      }
+      
+      console.log("Final contracts count:", contracts.length);
+      if (contracts.length > 0) {
+        console.log("Sample contract data:", contracts[0]);
+      }
+      
+      // Now safely use array methods with better error handling
       const activeContracts = contracts.filter(c => c?.status === 'active').length;
       const pendingContracts = contracts.filter(c => c?.status === 'pending').length;
       const completedContracts = contracts.filter(c => c?.status === 'completed').length;
       
       const totalRevenue = contracts
         .filter(c => c?.status === 'completed' && c?.status !== 'cancelled')
-        .reduce((sum, c) => sum + (c?.totalAmount || 0), 0);
+        .reduce((sum, c) => sum + (parseFloat(c?.totalAmount) || 0), 0);
 
       return {
         stats: {
@@ -445,11 +501,11 @@ const FarmerDashboard = () => {
           activeContracts,
           pendingContracts,
           totalRevenue,
-          totalUsers: 0, // This would come from a users API endpoint
           completedContracts
         },
         recentContracts: contracts.slice(0, 5),
-        products: products.slice(0, 5)
+        products: products.slice(0, 5),
+        allContracts: contracts
       };
     } catch (error) {
       console.error("Dashboard data fetch error:", error);
