@@ -35,7 +35,7 @@ const HowItWorks = () => {
           <span className="bg-green-100 text-green-700 text-sm font-semibold px-4 py-1 rounded-full inline-block mb-4">
             Simple Process
           </span>
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">How AgroLink Works</h2>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">How AgriLink Works</h2>
           <p className="text-gray-600 max-w-2xl mx-auto">
             Our platform streamlines the farming contract process, making it easy for farmers and buyers to connect and collaborate.
           </p>

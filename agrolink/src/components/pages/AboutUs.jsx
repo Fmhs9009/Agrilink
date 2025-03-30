@@ -8,7 +8,7 @@ const AboutUs = () => {
         {/* Hero Section */}
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-green-800 mb-4">
-            About AgroLink
+            About AgriLink
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Connecting farmers and consumers for a sustainable agricultural future

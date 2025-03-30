@@ -21,7 +21,7 @@ const mailSender=async(email,title,body)=>{
         
         // Send mail
         let info=await transporter.sendMail({
-            from:process.env.MAIL_USER || 'Agrolink || Agrilink',
+            from:process.env.MAIL_USER || 'AgriLink || AgriLink',
             to:`${email}`,
             subject:`${title}`,
             html:`${body}`

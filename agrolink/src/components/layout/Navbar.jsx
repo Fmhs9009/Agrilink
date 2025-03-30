@@ -70,8 +70,8 @@ const Navbar = () => {
             {/* Logo */}
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="flex items-center gap-2">
-                <img className="h-12 w-auto transition-transform hover:scale-105" src={logo} alt="AgroLink" />
-                <span className="hidden sm:block font-bold text-xl text-green-700">AgroLink</span>
+                <img className="h-12 w-auto transition-transform hover:scale-105" src={logo} alt="AgriLink" />
+                {/* <span className="hidden sm:block font-bold text-xl text-green-700">AgriLink</span> */}
               </Link>
             </div>
 

@@ -1,4 +1,4 @@
-// Centralized API service for AgroLink
+
 // This file provides a unified API client with standardized error handling,
 // authentication token management, and consistent response formats.
 import axios from 'axios';

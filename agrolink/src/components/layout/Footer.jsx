@@ -10,7 +10,7 @@ const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Logo and Description */}
           <div className="col-span-1 md:col-span-2">
-            <img src={logo} alt="AgroLink Logo" className="h-12 w-auto mb-4" />
+            <img src={logo} alt="AgriLink Logo" className="h-12 w-auto mb-4" />
             <p className="text-gray-400 text-sm">
               Connecting farmers and buyers directly, promoting sustainable agriculture
               and fair trade practices across India.
@@ -66,7 +66,7 @@ const Footer = () => {
               <li>Farming District</li>
               <li>Karnataka, India</li>
               <li>Phone: +91 123 456 7890</li>
-              <li>Email: info@agrolink.com</li>
+              <li>Email: info@agrilink.com</li>
             </ul>
           </div>
         </div>
@@ -75,7 +75,7 @@ const Footer = () => {
         <div className="border-t border-gray-800 mt-8 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <p className="text-gray-400 text-sm">
-              © {new Date().getFullYear()} AgroLink. All rights reserved.
+              © {new Date().getFullYear()} AgriLink. All rights reserved.
             </p>
             <div className="flex space-x-4 mt-4 md:mt-0">
               <Link to="/privacy" className="text-gray-400 hover:text-white text-sm">

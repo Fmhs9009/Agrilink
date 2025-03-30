@@ -29,7 +29,7 @@ const HomePage = () => {
             </div>
             <h2 className="text-3xl md:text-4xl font-bold mb-6 text-white">Ready to Grow Your Agricultural Business?</h2>
             <p className="text-xl text-green-100 mb-8 max-w-3xl mx-auto">
-              Join thousands of farmers and buyers on AgroLink. Start securing contracts and growing together today.
+              Join thousands of farmers and buyers on AgriLink. Start securing contracts and growing together today.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               {isAuthenticated ? (
@@ -45,7 +45,7 @@ const HomePage = () => {
                   to="/auth/signup" 
                   className="bg-white hover:bg-gray-100 text-green-700 px-8 py-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg"
                 >
-                  Join AgroLink Today
+                  Join AgriLink Today
                 </Link>
               )}
               <Link 

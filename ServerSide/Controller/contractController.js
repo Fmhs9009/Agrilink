@@ -157,8 +157,8 @@ exports.createContractRequest = catchAsyncErrors(async (req, res, next) => {
             
             const emailData = {
                 to: farmer.email,
-                subject: 'New Contract Request on AgroLink',
-                text: `Dear ${farmer.Name},\n\nYou have received a new contract request from ${buyer.Name} for ${quantity} ${unit} of ${product.name}.\n\nPlease login to your AgroLink account to view and respond to this request.\n\nBest regards,\nThe AgroLink Team`,
+                subject: 'New Contract Request on AgriLink',
+                text: `Dear ${farmer.Name},\n\nYou have received a new contract request from ${buyer.Name} for ${quantity} ${unit} of ${product.name}.\n\nPlease login to your AgriLink account to view and respond to this request.\n\nBest regards,\nThe AgriLink Team`,
                 html: `
                     <h2>New Contract Request</h2>
                     <p>Dear ${farmer.Name},</p>
@@ -172,8 +172,8 @@ exports.createContractRequest = catchAsyncErrors(async (req, res, next) => {
                         <li>Delivery Date: ${new Date(deliveryDate).toLocaleDateString()}</li>
                         <li>Payment Terms: ${paymentTerms ? JSON.stringify(paymentTerms) : 'Standard'}</li>
                     </ul>
-                    <p>Please <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard">login to your AgroLink account</a> to view and respond to this request.</p>
-                    <p>Best regards,<br>The AgroLink Team</p>
+                    <p>Please <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard">login to your AgriLink account</a> to view and respond to this request.</p>
+                    <p>Best regards,<br>The AgriLink Team</p>
                 `
             };
             
@@ -721,8 +721,8 @@ exports.submitCounterOffer = async (req, res) => {
             
             const emailData = {
                 to: recipientUser.email,
-                subject: 'New Counter Offer on AgroLink',
-                text: `Dear ${recipientUser.Name},\n\n${senderName} has submitted a counter offer for ${product.name}.\n\nPlease login to your AgroLink account to view and respond to this offer.\n\nBest regards,\nThe AgroLink Team`,
+                subject: 'New Counter Offer on AgriLink',
+                text: `Dear ${recipientUser.Name},\n\n${senderName} has submitted a counter offer for ${product.name}.\n\nPlease login to your AgriLink account to view and respond to this offer.\n\nBest regards,\nThe AgriLink Team`,
                 html: `
                     <h2>New Counter Offer</h2>
                     <p>Dear ${recipientUser.Name},</p>
@@ -738,8 +738,8 @@ exports.submitCounterOffer = async (req, res) => {
                         <li>Payment Terms: ${typeof counterOffer.paymentTerms === 'object' ? JSON.stringify(counterOffer.paymentTerms) : counterOffer.paymentTerms}</li>
                     </ul>
                     ${remarks ? `<p>Remarks: ${remarks}</p>` : ''}
-                    <p>Please <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contract._id}">login to your AgroLink account</a> to view and respond to this offer.</p>
-                    <p>Best regards,<br>The AgroLink Team</p>
+                    <p>Please <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contract._id}">login to your AgriLink account</a> to view and respond to this offer.</p>
+                    <p>Best regards,<br>The AgriLink Team</p>
                 `
             };
             

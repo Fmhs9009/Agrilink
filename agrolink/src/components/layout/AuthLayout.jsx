@@ -10,7 +10,7 @@ const AuthLayout = () => {
           <img
             className="mx-auto h-16 w-auto"
             src={logo}
-            alt="AgroLink Logo"
+            alt="AgriLink Logo"
           />
         </Link>
       </div>

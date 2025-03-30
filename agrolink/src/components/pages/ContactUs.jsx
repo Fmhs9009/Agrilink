@@ -23,7 +23,7 @@ const ContactUs = () => {
     {
       icon: FaEnvelope,
       title: 'Email',
-      details: ['info@agrolink.com', 'support@agrolink.com']
+      details: ['info@agrilink.com', 'support@agrilink.com']
     },
     {
       icon: FaMapMarkerAlt,
@@ -107,7 +107,7 @@ const ContactUs = () => {
         <div className="text-center mb-12">
           <h1 className="text-3xl font-bold mb-4">Contact Us</h1>
           <p className="text-gray-600 max-w-2xl mx-auto">
-            Have questions about AgroLink? We're here to help! Reach out to our team using the form below or contact us directly.
+            Have questions about AgriLink? We're here to help! Reach out to our team using the form below or contact us directly.
           </p>
         </div>
         

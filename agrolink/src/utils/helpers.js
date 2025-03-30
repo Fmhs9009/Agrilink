@@ -1,6 +1,3 @@
-/**
- * Utility functions for the AgroLink application
- */
 
 /**
  * Format a number as Indian currency (INR)

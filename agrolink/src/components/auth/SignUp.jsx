@@ -189,7 +189,7 @@ const SignUp = () => {
       <div className="absolute top-0 left-0 w-full p-3 bg-white shadow-sm">
         <div className="container mx-auto flex justify-between items-center">
           <Link to="/" className="flex items-center">
-            <img src={logo} alt="AgroLink Logo" className="h-8 w-auto" />
+            <img src={logo} alt="AgriLink Logo" className="h-8 w-auto" />
           </Link>
           <div className="flex space-x-4">
             <Link to="/auth/login" className="text-green-600 hover:text-green-800 font-medium">

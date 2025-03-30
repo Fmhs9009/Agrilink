@@ -89,6 +89,8 @@ export const ROUTES = {
   LOGIN: '/auth/login',
   REGISTER: '/auth/signup',
   VERIFY_OTP: '/auth/verify-otp',
+  FORGOT_PASSWORD: '/auth/forgot-password',
+  RESET_PASSWORD: '/auth/reset-password',
   PROFILE: '/profile',
   PRODUCTS: '/products',
   SHOP: '/shop',

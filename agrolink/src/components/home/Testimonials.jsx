@@ -6,21 +6,21 @@ const testimonials = [
     name: 'Rajesh Kumar',
     role: 'Farmer, Maharashtra',
     image: 'https://randomuser.me/api/portraits/men/1.jpg',
-    quote: 'AgroLink has transformed how I do business. I now have direct access to buyers and better prices for my produce. The contract management system is seamless and transparent.',
+    quote: 'AgriLink has transformed how I do business. I now have direct access to buyers and better prices for my produce. The contract management system is seamless and transparent.',
     rating: 5
   },
   {
     name: 'Priya Sharma',
     role: 'Produce Buyer, Delhi',
     image: 'https://randomuser.me/api/portraits/women/1.jpg',
-    quote: 'The platform makes it easy to find quality produce and establish long-term relationships with farmers. I\'ve been able to source organic vegetables consistently thanks to AgroLink.',
+    quote: 'The platform makes it easy to find quality produce and establish long-term relationships with farmers. I\'ve been able to source organic vegetables consistently thanks to AgriLink.',
     rating: 5
   },
   {
     name: 'Amit Patel',
     role: 'Farmer, Gujarat',
     image: 'https://randomuser.me/api/portraits/men/2.jpg',
-    quote: 'Contract farming through AgroLink has given me financial security and peace of mind. The transparent process and secure payments have made a significant difference in my farming business.',
+    quote: 'Contract farming through AgriLink has given me financial security and peace of mind. The transparent process and secure payments have made a significant difference in my farming business.',
     rating: 4
   }
 ];
@@ -55,7 +55,7 @@ const Testimonials = () => {
           </span>
           <h2 className="text-3xl md:text-4xl font-bold mb-4">What Our Users Say</h2>
           <p className="text-gray-600 max-w-2xl mx-auto">
-            Hear from farmers and buyers who have transformed their agricultural business with AgroLink.
+            Hear from farmers and buyers who have transformed their agricultural business with AgriLink.
           </p>
         </div>
 

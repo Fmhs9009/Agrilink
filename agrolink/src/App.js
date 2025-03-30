@@ -22,6 +22,8 @@ import DashboardRouter from './components/common/DashboardRouter';
 import LoginPage from "./components/auth/Login";
 import SignUpPage from "./components/auth/SignUp";
 import VerifyOTPPage from "./components/auth/VerifyOTP";
+import ForgotPassword from "./components/auth/ForgotPassword";
+import ResetPassword from "./components/auth/ResetPassword";
 
 // Lazy loaded components by feature
 // Auth components
@@ -155,6 +157,9 @@ function App() {
             <Route path="login" element={<LoginPage />} />
             <Route path="signup" element={<SignUpPage />} />
             <Route path="verify-otp" element={<VerifyOTPPage />} />
+            <Route path="forgot-password" element={<ForgotPassword />} />
+            <Route path="reset-password" element={<ResetPassword />} />
+            <Route path="reset-password/:token" element={<ResetPassword />} />
           </Route>
           
           {/* Main Routes with Layout */}

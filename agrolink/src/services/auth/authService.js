@@ -473,6 +473,42 @@ class AuthService {
       };
     }
   }
+
+  async requestPasswordReset(email) {
+    try {
+      const response = await authAxios.post('/auth/password/reset-request', { email });
+      return { 
+        success: true, 
+        message: 'Password reset instructions sent to your email'
+      };
+    } catch (error) {
+      console.error('Password reset request error:', error.response?.data || error.message);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Failed to send reset instructions' 
+      };
+    }
+  }
+
+  async resetPassword(token, newPassword) {
+    try {
+      const response = await authAxios.post('/auth/password/reset', {
+        token,
+        newPassword
+      });
+      
+      return { 
+        success: true, 
+        message: 'Password reset successfully' 
+      };
+    } catch (error) {
+      console.error('Password reset error:', error.response?.data || error.message);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Failed to reset password' 
+      };
+    }
+  }
 }
 
 // Create singleton instance
