@@ -39,7 +39,6 @@ const productSchema = new mongoose.Schema({
                 "Pulses",
                 "Oilseeds",
                 "Spices",
-                "Cash Crops",
                 "Herbs",
                 "Other"
             ],

@@ -6,6 +6,7 @@ import SearchBar from './SearchBar';
 import NoResults from './NoResults';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-hot-toast';
+import { FaFilter, FaTimes, FaSeedling, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 
 // Mock data for fallback when API fails
 const MOCK_PRODUCTS = [
@@ -146,83 +147,144 @@ const Shop = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [sortOption, setSortOption] = useState('newest');
-  const [priceRange, setPriceRange] = useState({ min: 0, max: 5000 });
   const [filters, setFilters] = useState({
-    category: '',
-    minPrice: '',
-    maxPrice: '',
+    currentGrowthStage: 'all',
+    harvestWindow: 'all',
+    farmingPractice: 'all',
+    waterSource: 'all',
+    certification: 'all',
     sortBy: 'newest',
-    organic: false
+    organic: false,
+    pesticidesUsed: null, // null = any, false = no pesticides only
+    openToCustomGrowing: null, // null = any, true = only open to custom growing
+    minQuantity: 0,
+    maxQuantity: 1000
   });
 
-  // Fetch products and categories on mount
+  // Mobile filter visibility
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  // Fetch products and categories on initial load
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchInitialData = async () => {
       setIsLoading(true);
+      
       try {
-        // Try to fetch products from API
-        const productsResponse = await productAPI.getAll();
-       
-        if (productsResponse && productsResponse.success ) {
-          setProducts(productsResponse.products);
+        // Fetch categories first
+        try {
+          const categoriesResponse = await categoryAPI.getAll();
+          if (categoriesResponse.success && categoriesResponse.categories) {
+            setCategories(['All', ...categoriesResponse.categories]);
+          } else {
+            setCategories(['All', ...MOCK_CATEGORIES]);
+          }
+        } catch (error) {
+          console.error('Error fetching categories:', error);
+          setCategories(['All', ...MOCK_CATEGORIES]);
+        }
+      } catch (error) {
+        console.error('Error in initial data loading:', error);
+        setCategories(['All', ...MOCK_CATEGORIES]);
+      }
+    };
+    
+    fetchInitialData();
+  }, []);
+
+  // Apply filters and fetch products when filters change
+  useEffect(() => {
+    const fetchFilteredProducts = async () => {
+      setIsLoading(true);
+      
+      try {
+        // Build filter parameters for API call
+        const filterParams = {};
+        
+        // Add search query if exists
+        if (searchQuery) {
+          filterParams.search = searchQuery;
+        }
+        
+        // Add category if not 'All'
+        if (selectedCategory !== 'All') {
+          filterParams.category = selectedCategory;
+        }
+        
+        // Add minimum quantity if set
+        if (filters.minQuantity > 0) {
+          filterParams.minQuantity = filters.minQuantity;
+        }
+        
+        // Add sort option
+        if (sortOption !== 'newest') {
+          const sortMap = {
+            'price-asc': 'price_asc',
+            'price-desc': 'price_desc', 
+            'harvest-date': 'harvest_date',
+            'quantity-desc': 'quantity_desc'
+          };
+          filterParams.sort = sortMap[sortOption] || 'newest';
+        }
+        
+        // Add other filters
+        if (filters.organic) {
+          filterParams.organic = true;
+        }
+        
+        if (filters.currentGrowthStage !== 'all') {
+          filterParams.currentGrowthStage = filters.currentGrowthStage;
+        }
+        
+        if (filters.farmingPractice !== 'all') {
+          filterParams.farmingPractices = filters.farmingPractice;
+        }
+        
+        if (filters.waterSource !== 'all') {
+          filterParams.waterSource = filters.waterSource;
+        }
+        
+        if (filters.certification !== 'all') {
+          filterParams.certification = filters.certification;
+        }
+        
+        if (filters.pesticidesUsed === false) {
+          filterParams.pesticidesUsed = false;
+        }
+        
+        if (filters.openToCustomGrowing === true) {
+          filterParams.openToCustomGrowing = true;
+        }
+        
+        if (filters.harvestWindow !== 'all') {
+          filterParams.harvestWindow = filters.harvestWindow;
+        }
+        
+        console.log("Applying filters:", filterParams);
+        
+        // Fetch products with filters
+        const productsResponse = await productAPI.getAll(filterParams);
+        
+        if (productsResponse.success) {
+          setProducts(productsResponse.products || []);
+          setError(null);
           setUseMockData(false);
         } else {
-          // If API returns empty data, use mock data
-    
+          console.error('Failed to fetch products from API, using mock data');
           setProducts(MOCK_PRODUCTS);
           setUseMockData(true);
-          toast('Using demo products for preview', {
-            icon: '⚠️',
-            style: {
-              borderRadius: '10px',
-              background: '#FEF3C7',
-              color: '#92400E',
-            },
-          });
         }
-        
-        // Try to fetch categories from API
-        try {
-          // Use mock categories directly instead of API call
-          setCategories(MOCK_CATEGORIES);
-          
-          /* Commenting out API call that's causing 404 error
-          const categoriesResponse = await productAPI.getProductCategories();
-          if (categoriesResponse && categoriesResponse.success && categoriesResponse.data && categoriesResponse.data.length > 0) {
-            setCategories(['All', ...categoriesResponse.data]);
-          } else {
-            // If API returns empty categories, use mock categories
-            setCategories(MOCK_CATEGORIES);
-          }
-          */
-        } catch (categoryError) {
-          console.error('Error fetching categories:', categoryError);
-          setCategories(MOCK_CATEGORIES);
-        }
-        
-      } catch (err) {
-        console.error('Error fetching products:', err);
-        setError('Could not connect to server. Using demo data for preview.');
-        
-        // Use mock data as fallback
+      } catch (error) {
+        console.error('Error fetching filtered products:', error);
+        setError(error.message || 'Failed to connect to server');
         setProducts(MOCK_PRODUCTS);
-        setCategories(MOCK_CATEGORIES);
         setUseMockData(true);
-        toast('Using demo products for preview', {
-          icon: '⚠️',
-          style: {
-            borderRadius: '10px',
-            background: '#FEF3C7',
-            color: '#92400E',
-          },
-        });
       } finally {
         setIsLoading(false);
       }
     };
     
-    fetchData();
-  }, []);
+    fetchFilteredProducts();
+  }, [searchQuery, selectedCategory, filters, sortOption]);
 
   // Filter handlers
   const handleFilterChange = (filterName, value) => {
@@ -236,14 +298,30 @@ const Shop = () => {
     setSearchQuery('');
     setSelectedCategory('All');
     setSortOption('newest');
-    setPriceRange({ min: 0, max: 5000 });
     setFilters({
-      category: '',
-      minPrice: '',
-      maxPrice: '',
+      currentGrowthStage: 'all',
+      harvestWindow: 'all',
+      farmingPractice: 'all',
+      waterSource: 'all',
+      certification: 'all',
       sortBy: 'newest',
-      organic: false
+      organic: false,
+      pesticidesUsed: null,
+      openToCustomGrowing: null,
+      minQuantity: 0,
+      maxQuantity: 1000
     });
+  };
+
+  // Calculate if a product's harvest date is within the specified window
+  const isHarvestWithinWindow = (harvestDateStr, windowDays) => {
+    if (windowDays === 'all') return true;
+    
+    const harvestDate = new Date(harvestDateStr);
+    const now = new Date();
+    const differenceInDays = Math.ceil((harvestDate - now) / (1000 * 60 * 60 * 24));
+    
+    return differenceInDays >= 0 && differenceInDays <= parseInt(windowDays);
   };
 
   // Filter products based on all criteria
@@ -251,21 +329,50 @@ const Shop = () => {
     // Category filter
     if (selectedCategory !== 'All' && product.category !== selectedCategory) return false;
     
-    // Price range filter
-    if (product.price < priceRange.min || product.price > priceRange.max) return false;
+    // Minimum Quantity filter
+    if (product.availableQuantity < filters.minQuantity) return false;
     
     // Organic filter
-    if (filters.organic && !product.isOrganic) return false;
+    if (filters.organic && !(product.isOrganic || product.organic)) return false;
+
+    // Growth stage filter (if not "all")
+    if (filters.currentGrowthStage !== 'all' && product.currentGrowthStage !== filters.currentGrowthStage) return false;
+    
+    // Harvest window filter
+    if (filters.harvestWindow !== 'all' && !isHarvestWithinWindow(product.estimatedHarvestDate, filters.harvestWindow)) return false;
+    
+    // Farming practice filter
+    if (filters.farmingPractice !== 'all' && !product.farmingPractices?.includes(filters.farmingPractice)) return false;
+    
+    // Water source filter
+    if (filters.waterSource !== 'all' && product.waterSource !== filters.waterSource) return false;
+    
+    // Certification filter
+    if (filters.certification !== 'all' && product.certification !== filters.certification) return false;
+    
+    // Pesticides filter
+    if (filters.pesticidesUsed === false && product.pesticidesUsed !== false) return false;
+    
+    // Custom growing filter
+    if (filters.openToCustomGrowing === true && product.openToCustomGrowing !== true) return false;
     
     // Search query filter
     if (searchQuery) {
       const searchLower = searchQuery.toLowerCase();
+      
+      // Get farmer details, handling both populated objects and reference IDs
+      // Based on User schema which has Name and FarmLocation fields
+      const farmerName = product.farmer?.Name || '';
+      const farmerLocation = product.farmer?.FarmLocation || 
+                             product.farmLocation?.district || 
+                             product.farmLocation?.state || '';
+                             
       return (
-        product.name.toLowerCase().includes(searchLower) ||
+        product.name?.toLowerCase().includes(searchLower) ||
         product.description?.toLowerCase().includes(searchLower) ||
         product.category?.toLowerCase().includes(searchLower) ||
-        product.farmer?.name?.toLowerCase().includes(searchLower) ||
-        product.farmer?.location?.toLowerCase().includes(searchLower)
+        farmerName.toLowerCase().includes(searchLower) ||
+        farmerLocation.toLowerCase().includes(searchLower)
       );
     }
     
@@ -281,73 +388,194 @@ const Shop = () => {
         return b.price - a.price;
       case 'rating':
         return (b.averageRating || 0) - (a.averageRating || 0);
+      case 'harvest-date':
+        return new Date(a.estimatedHarvestDate || 0) - new Date(b.estimatedHarvestDate || 0);
+      case 'quantity-desc':
+        return (b.availableQuantity || 0) - (a.availableQuantity || 0);
       case 'newest':
       default:
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
     }
   });
 
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-800 mb-8 text-center">
-        AgroLink Marketplace
-      </h1>
+  const toggleMobileFilters = () => {
+    setShowMobileFilters(!showMobileFilters);
+  };
 
-      {useMockData && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">
-                Using demo data for preview. Connect to a backend API for real data.
-              </p>
-            </div>
+  // Get active filter count
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (selectedCategory !== 'All') count++;
+    if (filters.organic) count++;
+    if (filters.currentGrowthStage !== 'all') count++;
+    if (filters.harvestWindow !== 'all') count++;
+    if (filters.farmingPractice !== 'all') count++;
+    if (filters.waterSource !== 'all') count++;
+    if (filters.certification !== 'all') count++;
+    if (filters.pesticidesUsed === false) count++;
+    if (filters.openToCustomGrowing === true) count++;
+    if (sortOption !== 'newest') count++;
+    if (filters.minQuantity > 0) count++;
+    return count;
+  };
+
+  const activeFilterCount = getActiveFilterCount();
+
+  return (
+    <div className="bg-gray-50 min-h-screen">
+      {/* Hero Banner */}
+      <div className="bg-gradient-to-r from-green-600 to-green-900 text-white">
+        <div className="container mx-auto px-4 py-10 md:py-16">
+          <div className="max-w-4xl mx-auto text-center">
+            <h1 className="text-3xl md:text-4xl font-bold mb-4">
+              Find the Perfect Farming Contracts
+            </h1>
+            <p className="text-lg md:text-xl opacity-90 mb-6">
+              Connect with farmers and buyers to grow better, together
+            </p>
+            <SearchBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
           </div>
         </div>
-      )}
+        <div className="h-5 bg-gray-50" style={{ clipPath: 'ellipse(70% 100% at 50% 0%)' }}></div>
+      </div>
 
-      <SearchBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+      <div className="container mx-auto px-4 py-8">
+        {useMockData && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-md">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  Using demo data for preview. Connect to a backend API for real data.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
-      <div className="flex flex-col md:flex-row gap-8">
-        {/* Filters */}
-        <div className="md:w-1/4">
-          <FilterSection
-            categories={categories}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-            filters={filters}
-            handleFilterChange={handleFilterChange}
-            priceRange={priceRange}
-            setPriceRange={setPriceRange}
-            sortOption={sortOption}
-            setSortOption={setSortOption}
-            resetFilters={resetFilters}
-            products={products}
-          />
+        {/* Mobile Filter Button */}
+        <div className="mb-4 md:hidden">
+          <button
+            onClick={toggleMobileFilters}
+            className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-3 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <FaFilter className="text-green-600" />
+            {showMobileFilters ? 'Hide Filters' : 'Show Filters'}
+            {activeFilterCount > 0 && (
+              <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full ml-2">
+                {activeFilterCount}
+              </span>
+            )}
+            {showMobileFilters ? <FaChevronUp /> : <FaChevronDown />}
+          </button>
         </div>
 
-        {/* Products Grid */}
-        <div className="md:w-3/4">
-          {isLoading ? (
-            <LoadingSpinner />
-          ) : sortedProducts.length > 0 ? (
-            <>
-              <p className="text-gray-600 mb-4">
-                Showing {sortedProducts.length} of {products.length} products
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {sortedProducts.map(product => (
-                  <ProductCard key={product._id} product={product} />
-                ))}
+        <div className="flex flex-col md:flex-row gap-6">
+          {/* Filters */}
+          <div 
+            className={`md:w-1/4 transition-all duration-300 ${
+              showMobileFilters ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0 md:max-h-full md:opacity-100 overflow-hidden'
+            }`}
+          >
+            <div className="sticky top-20">
+              <FilterSection
+                categories={categories}
+                selectedCategory={selectedCategory}
+                setSelectedCategory={setSelectedCategory}
+                filters={filters}
+                handleFilterChange={handleFilterChange}
+                sortOption={sortOption}
+                setSortOption={setSortOption}
+                resetFilters={resetFilters}
+                products={products}
+              />
+            </div>
+          </div>
+
+          {/* Products Grid */}
+          <div className="md:w-3/4">
+            {isLoading ? (
+              <div className="w-full">
+                <LoadingSpinner type="skeleton-grid" count={6} message={null} />
               </div>
-            </>
-          ) : (
-            <NoResults resetFilters={resetFilters} />
-          )}
+            ) : sortedProducts.length > 0 ? (
+              <>
+                <div className="bg-white rounded-lg p-4 mb-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between">
+                  <p className="text-gray-600 mb-2 sm:mb-0">
+                    Showing <span className="font-medium">{sortedProducts.length}</span> of <span className="font-medium">{products.length}</span> contracts
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {activeFilterCount > 0 && (
+                      <>
+                        <span className="text-sm text-gray-500">Active filters:</span>
+                        {selectedCategory !== 'All' && (
+                          <span className="inline-flex items-center bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            {selectedCategory}
+                          </span>
+                        )}
+                        {filters.organic && (
+                          <span className="inline-flex items-center bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            Organic
+                          </span>
+                        )}
+                        {filters.currentGrowthStage !== 'all' && (
+                          <span className="inline-flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            {filters.currentGrowthStage.replace('_', ' ')}
+                          </span>
+                        )}
+                        {filters.harvestWindow !== 'all' && (
+                          <span className="inline-flex items-center bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            Harvest: {filters.harvestWindow} days
+                          </span>
+                        )}
+                        {filters.farmingPractice !== 'all' && (
+                          <span className="inline-flex items-center bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            {filters.farmingPractice}
+                          </span>
+                        )}
+                        {filters.pesticidesUsed === false && (
+                          <span className="inline-flex items-center bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            No Pesticides
+                          </span>
+                        )}
+                        {sortOption !== 'newest' && (
+                          <span className="inline-flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            {sortOption === 'price-asc' ? 'Price ↑' : 
+                             sortOption === 'price-desc' ? 'Price ↓' : 
+                             sortOption === 'harvest-date' ? 'Harvest Soon' :
+                             sortOption === 'quantity-desc' ? 'Most Quantity' : 
+                             sortOption}
+                          </span>
+                        )}
+                        {(filters.minQuantity > 0) && (
+                          <span className="inline-flex items-center bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            Min Qty: {filters.minQuantity}
+                          </span>
+                        )}
+                        <button 
+                          onClick={resetFilters}
+                          className="text-xs text-red-600 hover:text-red-800 font-medium flex items-center"
+                        >
+                          <FaTimes className="mr-1" /> Clear all
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {sortedProducts.map(product => (
+                    <ProductCard key={product._id} product={product} />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <NoResults resetFilters={resetFilters} />
+            )}
+          </div>
         </div>
       </div>
     </div>

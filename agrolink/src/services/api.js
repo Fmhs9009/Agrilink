@@ -143,8 +143,60 @@ const handleApiResponse = async (apiCall) => {
 export const productAPI = {
   // Get all products with optional filters
   getAll: async (filters = {}) => {
-   // console.log("Calling getAll products API with filters:", filters);
-    return handleApiResponse(() => api.get('/products', { params: filters }));
+    // Format the filters to match the API expectations
+    const formattedFilters = { ...filters };
+    
+    // Convert special filter params if they exist
+    if (filters.currentGrowthStage && filters.currentGrowthStage !== 'all') {
+      formattedFilters.currentGrowthStage = filters.currentGrowthStage;
+    }
+    
+    if (filters.harvestWindow && filters.harvestWindow !== 'all') {
+      // Convert harvestWindow into a date range for the API
+      const harvestDays = parseInt(filters.harvestWindow);
+      if (!isNaN(harvestDays)) {
+        const today = new Date();
+        const futureDate = new Date();
+        futureDate.setDate(today.getDate() + harvestDays);
+        
+        formattedFilters.harvestStartDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
+        formattedFilters.harvestEndDate = futureDate.toISOString().split('T')[0]; // YYYY-MM-DD
+        delete formattedFilters.harvestWindow; // Remove the original param
+      }
+    }
+    
+    if (filters.farmingPractice && filters.farmingPractice !== 'all') {
+      formattedFilters.farmingPractices = filters.farmingPractice;
+      delete formattedFilters.farmingPractice;
+    }
+    
+    if (filters.waterSource && filters.waterSource !== 'all') {
+      formattedFilters.waterSource = filters.waterSource;
+    }
+    
+    if (filters.certification && filters.certification !== 'all') {
+      formattedFilters.certification = filters.certification;
+    }
+    
+    if (filters.pesticidesUsed === false) {
+      formattedFilters.pesticidesUsed = false;
+    }
+    
+    if (filters.openToCustomGrowing === true) {
+      formattedFilters.openToCustomGrowing = true;
+    }
+    
+    // Handle quantity range
+    if (filters.minQuantity !== undefined && filters.minQuantity > 0) {
+      formattedFilters.minQuantity = filters.minQuantity;
+    }
+    
+    if (filters.maxQuantity !== undefined && filters.maxQuantity < 1000) {
+      formattedFilters.maxQuantity = filters.maxQuantity;
+    }
+    
+    console.log("Calling getAll products API with formatted filters:", formattedFilters);
+    return handleApiResponse(() => api.get('/products', { params: formattedFilters }));
   },
 
   // Get product by ID
@@ -405,6 +457,27 @@ export const productAPI = {
       return { success: false, message: 'Error fetching recommended products' };
     }
   },
+};
+
+// Farmer API service
+export const farmerAPI = {
+  // Get farmer by ID
+  getById: async (id) => {
+    console.log("Fetching farmer details for ID:", id);
+    return handleApiResponse(() => api.get(`/farmers/${id}`));
+  },
+  
+  // Get current farmer profile
+  getProfile: async () => {
+    console.log("Fetching current farmer profile");
+    return handleApiResponse(() => api.get('/farmers/profile'));
+  },
+  
+  // Update farmer profile
+  updateProfile: async (profileData) => {
+    console.log("Updating farmer profile:", profileData);
+    return handleApiResponse(() => api.put('/farmers/profile', profileData));
+  }
 };
 
 // Category API service

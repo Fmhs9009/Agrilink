@@ -308,11 +308,20 @@ exports.getAllProducts = catchAsyncErrors(async (req, res, next) => {
     const { 
         category, 
         minPrice, 
-        maxPrice, 
+        maxPrice,
+        minQuantity,
+        maxQuantity, 
         sort, 
         search, 
-        organic, 
+        organic,
+        currentGrowthStage,
+        harvestStartDate,
+        harvestEndDate,
+        farmingPractices,
+        waterSource,
         certification,
+        pesticidesUsed,
+        openToCustomGrowing,
         page = 1, 
         limit = 10 
     } = req.query;
@@ -323,17 +332,57 @@ exports.getAllProducts = catchAsyncErrors(async (req, res, next) => {
     if (search) {
         query.$or = [
             { name: { $regex: search, $options: 'i' } },
-            { description: { $regex: search, $options: 'i' } }
+            { description: { $regex: search, $options: 'i' } },
+            { category: { $regex: search, $options: 'i' } }
         ];
     }
 
     if (category) query.category = category;
     if (organic) query.organic = organic === 'true';
+    
+    // Handle new filter parameters
+    if (currentGrowthStage) query.currentGrowthStage = currentGrowthStage;
+    
+    // Handle harvest date range
+    if (harvestStartDate || harvestEndDate) {
+        query.estimatedHarvestDate = {};
+        if (harvestStartDate) query.estimatedHarvestDate.$gte = new Date(harvestStartDate);
+        if (harvestEndDate) query.estimatedHarvestDate.$lte = new Date(harvestEndDate);
+    }
+    
+    // Handle farming practices (can be single value or array)
+    if (farmingPractices) {
+        if (Array.isArray(farmingPractices)) {
+            query.farmingPractices = { $in: farmingPractices };
+        } else {
+            query.farmingPractices = farmingPractices;
+        }
+    }
+    
+    if (waterSource) query.waterSource = waterSource;
     if (certification) query.certification = certification;
+    
+    // Handle boolean filters
+    if (pesticidesUsed !== undefined) {
+        query.pesticidesUsed = pesticidesUsed === 'true' || pesticidesUsed === true;
+    }
+    
+    if (openToCustomGrowing !== undefined) {
+        query.openToCustomGrowing = openToCustomGrowing === 'true' || openToCustomGrowing === true;
+    }
+    
+    // Handle price range
     if (minPrice || maxPrice) {
         query.price = {};
         if (minPrice) query.price.$gte = Number(minPrice);
         if (maxPrice) query.price.$lte = Number(maxPrice);
+    }
+
+    // Handle quantity range
+    if (minQuantity || maxQuantity) {
+        query.availableQuantity = {};
+        if (minQuantity) query.availableQuantity.$gte = Number(minQuantity);
+        if (maxQuantity) query.availableQuantity.$lte = Number(maxQuantity);
     }
 
     // Only show active products
@@ -341,6 +390,8 @@ exports.getAllProducts = catchAsyncErrors(async (req, res, next) => {
 
     // Calculate pagination
     const skip = (page - 1) * limit;
+
+    console.log("Filter query:", JSON.stringify(query, null, 2));
 
     // Build query
     let productsQuery = Product.find(query)
@@ -353,8 +404,9 @@ exports.getAllProducts = catchAsyncErrors(async (req, res, next) => {
         const sortOptions = {
             'price_asc': { price: 1 },
             'price_desc': { price: -1 },
-            'rating_desc': { averageRating: -1 },
-            'newest': { createdAt: -1 }
+            'newest': { createdAt: -1 },
+            'harvest_date': { estimatedHarvestDate: 1 },
+            'quantity_desc': { availableQuantity: -1 }
         };
         productsQuery = productsQuery.sort(sortOptions[sort] || sortOptions['newest']);
     } else {
