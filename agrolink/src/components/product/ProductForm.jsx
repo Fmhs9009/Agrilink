@@ -62,7 +62,6 @@ const ProductForm = () => {
     'Pulses',
     'Oilseeds',
     'Spices',
-    'Cash Crops',
     'Herbs',
     'Other'
   ];
@@ -382,6 +381,12 @@ const ProductForm = () => {
       return;
     }
     
+    // Check if minimumOrderQuantity exceeds availableQuantity
+    if (parseInt(formData.minimumOrderQuantity) > parseInt(formData.availableQuantity)) {
+      toast.error('Minimum order quantity cannot exceed available quantity');
+      return;
+    }
+    
     if (!formData.growingPeriod || isNaN(parseInt(formData.growingPeriod)) || parseInt(formData.growingPeriod) < 1) {
       toast.error('Please enter a valid growing period');
       return;
@@ -397,6 +402,16 @@ const ProductForm = () => {
       return;
     }
     
+    // Validate estimated harvest date against growing period
+    const plantingDate = new Date();
+    const harvestDate = new Date(formData.estimatedHarvestDate);
+    const daysDifference = Math.ceil((harvestDate - plantingDate) / (1000 * 60 * 60 * 24));
+    
+    if (daysDifference < parseInt(formData.growingPeriod)) {
+      toast.error(`Harvest date should be at least ${formData.growingPeriod} days from today (full growing period)`);
+      return;
+    }
+    
     if (!formData.farmingPractices || formData.farmingPractices.length === 0) {
       toast.error('At least one farming practice must be selected');
       return;
@@ -404,6 +419,12 @@ const ProductForm = () => {
     
     if (!formData.waterSource) {
       toast.error('Water source is required');
+      return;
+    }
+    
+    // Check if certificate image is uploaded when a certification is selected
+    if (formData.certification !== 'None' && previewImages.length === 0) {
+      toast.error('Please upload your product images including certification document');
       return;
     }
     
@@ -706,9 +727,15 @@ const ProductForm = () => {
                       value={formData.minimumOrderQuantity}
                       onChange={handleChange}
                       min="1"
+                      max={formData.availableQuantity || undefined}
                       className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500"
                       required
                     />
+                    {parseInt(formData.minimumOrderQuantity) > parseInt(formData.availableQuantity) && (
+                      <p className="mt-1 text-sm text-red-600">
+                        Minimum order cannot exceed available quantity
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -716,6 +743,9 @@ const ProductForm = () => {
               {/* Growing Information Section */}
               <div className="mb-8">
                 <h2 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b">Growing Information</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Provide accurate details about the growing period and current growth stage to help buyers make informed decisions. The estimated harvest date should consider the full growing period.
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Growing Period */}
                   <div>
@@ -767,6 +797,22 @@ const ProductForm = () => {
                       className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500"
                       required
                     />
+                    {formData.estimatedHarvestDate && formData.growingPeriod && (
+                      (() => {
+                        const plantingDate = new Date();
+                        const harvestDate = new Date(formData.estimatedHarvestDate);
+                        const daysDifference = Math.ceil((harvestDate - plantingDate) / (1000 * 60 * 60 * 24));
+                        
+                        if (daysDifference < parseInt(formData.growingPeriod)) {
+                          return (
+                            <p className="mt-1 text-sm text-red-600">
+                              Harvest date should be at least {formData.growingPeriod} days from today (full growing period)
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()
+                    )}
                   </div>
                   
                   {/* Soil Type */}
@@ -789,6 +835,9 @@ const ProductForm = () => {
               {/* Seasonal Availability */}
               <div className="mb-8">
                 <h2 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b">Seasonal Availability</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Select the months when this product is naturally available or can be grown. This helps buyers understand the best time to contract your product.
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Start Month */}
                   <div>
@@ -844,6 +893,11 @@ const ProductForm = () => {
                         <option key={month.value} value={month.value}>{month.label}</option>
                       ))}
                     </select>
+                    {(formData.seasonalAvailability.startMonth > formData.seasonalAvailability.endMonth) && (
+                      <p className="mt-1 text-sm text-amber-600">
+                        Note: Your selection indicates this crop is available across the new year (e.g., Oct-Mar)
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -854,9 +908,16 @@ const ProductForm = () => {
                 <div className="grid grid-cols-1 gap-6">
                   {/* Farming Practices */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Farming Practices*
-                    </label>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Farming Practices*
+                      </label>
+                      {formData.organic && !formData.farmingPractices.includes('Organic') && (
+                        <span className="text-xs px-2 py-1 bg-amber-50 text-amber-800 rounded-full">
+                          Tip: Consider selecting 'Organic' as a farming practice
+                        </span>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {farmingPracticeOptions.map(practice => (
                         <div key={practice} className="flex items-center">
@@ -866,15 +927,36 @@ const ProductForm = () => {
                             checked={formData.farmingPractices.includes(practice)}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setFormData({
-                                  ...formData,
-                                  farmingPractices: [...formData.farmingPractices, practice]
-                                });
+                                // Special handling for Organic practice
+                                if (practice === 'Organic') {
+                                  // If Organic practice is selected, also check the organic checkbox
+                                  setFormData({
+                                    ...formData,
+                                    farmingPractices: [...formData.farmingPractices, practice],
+                                    organic: true,
+                                    pesticidesUsed: false // Disable pesticides when organic
+                                  });
+                                } else {
+                                  setFormData({
+                                    ...formData,
+                                    farmingPractices: [...formData.farmingPractices, practice]
+                                  });
+                                }
                               } else {
-                                setFormData({
-                                  ...formData,
-                                  farmingPractices: formData.farmingPractices.filter(p => p !== practice)
-                                });
+                                // Special handling for Organic practice
+                                if (practice === 'Organic') {
+                                  // If Organic practice is unselected, uncheck the organic checkbox
+                                  setFormData({
+                                    ...formData,
+                                    farmingPractices: formData.farmingPractices.filter(p => p !== practice),
+                                    organic: false
+                                  });
+                                } else {
+                                  setFormData({
+                                    ...formData,
+                                    farmingPractices: formData.farmingPractices.filter(p => p !== practice)
+                                  });
+                                }
                               }
                             }}
                             className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
@@ -925,48 +1007,103 @@ const ProductForm = () => {
                   </div>
                   
                   {/* Checkboxes */}
-                  <div className="flex flex-wrap gap-6">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="organic"
-                        name="organic"
-                        checked={formData.organic}
-                        onChange={handleChange}
-                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="organic" className="ml-2 block text-sm text-gray-900">
-                        Organic Product
-                      </label>
+                  <div className="mt-6 pt-4 border-t border-gray-200">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Organic Status</h4>
+                    <p className="text-xs text-gray-600 mb-3">
+                      Organic products cannot contain synthetic pesticides. These options are mutually exclusive.
+                    </p>
+                    <div className="flex flex-wrap gap-6">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="organic"
+                          name="organic"
+                          checked={formData.organic}
+                          onChange={(e) => {
+                            const isChecked = e.target.checked;
+                            
+                            // Update farming practices based on organic checkbox
+                            let updatedFarmingPractices = [...formData.farmingPractices];
+                            
+                            if (isChecked && !updatedFarmingPractices.includes('Organic')) {
+                              // Add Organic to farming practices
+                              updatedFarmingPractices.push('Organic');
+                            } else if (!isChecked && updatedFarmingPractices.includes('Organic')) {
+                              // Remove Organic from farming practices
+                              updatedFarmingPractices = updatedFarmingPractices.filter(p => p !== 'Organic');
+                            }
+                            
+                            setFormData({
+                              ...formData,
+                              organic: isChecked,
+                              // If organic is checked, pesticides must be false
+                              pesticidesUsed: isChecked ? false : formData.pesticidesUsed,
+                              farmingPractices: updatedFarmingPractices
+                            });
+                          }}
+                          className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="organic" className="ml-2 block text-sm text-gray-900">
+                          Organic Product
+                        </label>
+                        {formData.organic && formData.certification === 'None' && (
+                          <span className="ml-2 text-xs text-orange-600">
+                            (Consider selecting a certification to validate this claim)
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="pesticidesUsed"
+                          name="pesticidesUsed"
+                          checked={formData.pesticidesUsed}
+                          onChange={(e) => {
+                            const isChecked = e.target.checked;
+                            
+                            // Update farming practices to remove Organic if pesticides are used
+                            let updatedFarmingPractices = [...formData.farmingPractices];
+                            if (isChecked && updatedFarmingPractices.includes('Organic')) {
+                              // Remove Organic from farming practices when pesticides are used
+                              updatedFarmingPractices = updatedFarmingPractices.filter(p => p !== 'Organic');
+                            }
+                            
+                            setFormData({
+                              ...formData,
+                              pesticidesUsed: isChecked,
+                              // If pesticides are used, product cannot be organic
+                              organic: isChecked ? false : formData.organic,
+                              // Update farming practices
+                              farmingPractices: updatedFarmingPractices
+                            });
+                          }}
+                          className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="pesticidesUsed" className="ml-2 block text-sm text-gray-900">
+                          Pesticides Used
+                        </label>
+                        {formData.pesticidesUsed && (
+                          <span className="ml-2 text-xs text-gray-600">
+                            (Products using pesticides cannot be labeled as organic)
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="pesticidesUsed"
-                        name="pesticidesUsed"
-                        checked={formData.pesticidesUsed}
-                        onChange={handleChange}
-                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="pesticidesUsed" className="ml-2 block text-sm text-gray-900">
-                        Pesticides Used
-                      </label>
-                    </div>
-                    
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="openToCustomGrowing"
-                        name="openToCustomGrowing"
-                        checked={formData.openToCustomGrowing}
-                        onChange={handleChange}
-                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="openToCustomGrowing" className="ml-2 block text-sm text-gray-900">
-                        Open to Custom Growing Arrangements
-                      </label>
-                    </div>
+                  </div>
+                  
+                  <div className="flex items-center mt-4">
+                    <input
+                      type="checkbox"
+                      id="openToCustomGrowing"
+                      name="openToCustomGrowing"
+                      checked={formData.openToCustomGrowing}
+                      onChange={handleChange}
+                      className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="openToCustomGrowing" className="ml-2 block text-sm text-gray-900">
+                      Open to Custom Growing Arrangements
+                    </label>
                   </div>
                 </div>
               </div>
@@ -1057,7 +1194,15 @@ const ProductForm = () => {
               
               {/* Image Upload */}
               <div className="mb-8">
-                <h2 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b">Product Images</h2>
+                <h2 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b">Product Images with Certificate Image (if any)</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  {formData.certification !== 'None' && (
+                    <span className="block p-2 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700 mb-4">
+                      <strong>Important:</strong> Since you selected "{formData.certification}" certification, please upload the certificate image along with your product images.
+                    </span>
+                  )}
+                  Upload clear images of your product. If you have organic certification or other certifications, please include those documents as images.
+                </p>
                 <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
                   <div className="space-y-1 text-center">
                     <FaImage className="mx-auto h-12 w-12 text-gray-400" />
