@@ -175,9 +175,9 @@ const RecentContracts = ({ contracts }) => (
               const productName = contract.product?.name || 
                                   (contract.productId ? 'Product ' + contract.productId : 'Unknown Product');
               
-              const buyerName = contract.buyer?.name || 
+              const buyerName = contract.buyer?.email || 
                                (contract.buyerId ? 'Buyer ' + contract.buyerId : 'Unknown Buyer');
-              
+              console.log(contracts)
               return (
                 <tr key={contract._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -1011,7 +1011,7 @@ const RecentContractsTimeline = ({ contracts }) => {
       <div className="px-6 py-4 border-b border-gray-200">
         <h3 className="text-lg font-semibold text-gray-800">Recent Contract Activity</h3>
       </div>
-      
+
       <div className="p-4">
         <div className="flow-root">
           <ul className="-mb-8">
@@ -1020,7 +1020,7 @@ const RecentContractsTimeline = ({ contracts }) => {
               const productName = contract.product?.name || contract.crop?.name || 
                                 (contract.productId ? 'Product ' + contract.productId : 'Unknown Product');
               
-              const buyerName = contract.buyer?.name || 
+              const buyerName = contract.buyer?.email || 
                                (contract.buyerId ? 'Buyer ' + contract.buyerId : 'Unknown Buyer');
               
               // Convert status for display (requested -> pending)
@@ -1343,13 +1343,13 @@ const FarmerDashboard = () => {
         contracts = contractsRes.data.contracts;
       }
       
-      console.log("Dashboard processed contracts:", contracts);
+      // console.log("Dashboard processed contracts:", contracts);
       
       if (contracts.length === 0) {
-        console.log("No contracts found for farmer, trying general endpoint as fallback");
+        // console.log("No contracts found for farmer, trying general endpoint as fallback");
         // If no contracts found, try the general endpoint
         const allContractsRes = await contractAPI.getAll();
-        console.log("All contracts response:", allContractsRes);
+        // console.log("All contracts response:", allContractsRes);
         
         // Extract contracts from the general response
         if (Array.isArray(allContractsRes)) {

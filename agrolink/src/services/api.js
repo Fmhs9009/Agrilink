@@ -709,7 +709,7 @@ export const contractAPI = {
 
   // Get farmer's contracts
   getByFarmer: async (farmerId) => {
-    return handleApiResponse(() => api.get(`/contracts/farmer/${farmerId}`));
+    return handleApiResponse(() => api.get(`/auth/user/${farmerId}`));
   },
 
   // Get buyer's contracts
