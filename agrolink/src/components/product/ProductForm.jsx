@@ -153,8 +153,8 @@ const ProductForm = () => {
         try {
           setFetchingProduct(true);
           const response = await productAPI.getById(id);
-          
-          const productData = response.data;
+          // console.log("aessssssssssssssssssswwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwfgggggggggg=",response)
+          const productData = response.product;
           
           if (!productData) {
             toast.error('Product not found');

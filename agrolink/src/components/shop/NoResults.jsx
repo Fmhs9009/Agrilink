@@ -25,13 +25,13 @@ const NoResults = ({ resetFilters }) => {
           Reset All Filters
         </button>
         
-        <Link
+        {/* <Link
           to="/shop"
           className="inline-flex items-center justify-center gap-2 bg-green-100 hover:bg-green-200 text-green-800 px-4 py-2 rounded-lg font-medium transition-colors"
         >
           <FaSeedling />
           Browse All Contracts
-        </Link>
+        </Link> */}
       </div>
       
       <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 md:p-6 text-left">

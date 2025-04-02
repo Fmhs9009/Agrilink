@@ -52,7 +52,7 @@ const HeroSection = () => {
             </Link>
           </div>
           
-          <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
+          {/* <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
             {[
               { number: '2,500+', label: 'Farmers' },
               { number: '150+', label: 'Buyers' },
@@ -64,7 +64,7 @@ const HeroSection = () => {
                 <div className="text-xs md:text-sm text-gray-300">{stat.label}</div>
               </div>
             ))}
-          </div>
+          </div> */}
         </div>
       </div>
       
