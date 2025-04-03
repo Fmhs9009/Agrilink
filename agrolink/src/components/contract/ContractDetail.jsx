@@ -21,6 +21,7 @@ const ContractDetail = () => {
   const navigate = useNavigate();
   const { contractRequests, loading, error } = useSelector(state => state.contractRequests);
   const [contract, setContract] = useState(null);
+  const [cropDetails, setCropDetails] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
 
@@ -158,6 +159,34 @@ const ContractDetail = () => {
       }
     }
   }, [contractRequests, id, contract, fetchContractById]);
+
+  // Fetch crop details when contract is loaded
+  useEffect(() => {
+    const fetchCropDetails = async () => {
+      if (contract && contract.crop && contract.crop._id) {
+        try {
+          setIsLoading(true);
+          console.log("Fetching crop details for ID:", contract.crop._id);
+          const response = await api.get(`/products/product/${contract.crop._id}`);
+          
+          if (response.data && response.data.product) {
+            console.log("Got crop details:", response.data.product);
+            setCropDetails(response.data.product);
+          } else if (response.data) {
+            console.log("Got crop details from response data:", response.data);
+            setCropDetails(response.data);
+          }
+        } catch (error) {
+          console.error("Error fetching crop details:", error);
+          toast.error(`Failed to load crop details: ${error.message}`);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchCropDetails();
+  }, [contract]);
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -399,7 +428,7 @@ const ContractDetail = () => {
       <div className="border-b border-gray-200 pb-4 mb-6 print:border-b-2">
         <div className="flex justify-between items-start">
           <div>
-            <h2 className="font-semibold text-xl mb-1">{contract.product?.name || 'Crop Contract'}</h2>
+            <h2 className="font-semibold text-xl mb-1">{cropDetails?.name || contract.product?.name || contract.crop?.name || 'Crop Contract'}</h2>
             <p className="text-gray-600">Contract ID: {contract._id}</p>
           </div>
           <div className="flex flex-col items-end">
@@ -434,18 +463,27 @@ const ContractDetail = () => {
               <FaMoneyBillWave className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
                 <p className="font-medium">Price Per Unit</p>
-                <p className="text-xl font-bold text-green-600">
-                  ₹{contract.crop?.price || 'N/A'}
-                </p>
-                {getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' && (
-                  <p className="text-xs mt-1 text-red-500 font-medium">
-                    Buyer proposed {getTermDifference(contract.crop?.price, contract.pricePerUnit).percent}% lower price
-                  </p>
-                )}
-                {getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'increase' && (
-                  <p className="text-xs mt-1 text-green-500 font-medium">
-                    Buyer proposed {getTermDifference(contract.crop?.price, contract.pricePerUnit).percent}% higher price
-                  </p>
+                {isLoading && !cropDetails ? (
+                  <div className="animate-pulse flex space-x-2 items-center">
+                    <div className="h-6 w-20 bg-gray-200 rounded"></div>
+                    <span className="text-xs text-gray-400">Loading...</span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xl font-bold text-green-600">
+                      ₹{cropDetails?.price || contract.crop?.price || 'N/A'}
+                    </p>
+                    {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' && (
+                      <p className="text-xs mt-1 text-red-500 font-medium">
+                        Buyer proposed {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit).percent}% lower price
+                      </p>
+                    )}
+                    {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'increase' && (
+                      <p className="text-xs mt-1 text-green-500 font-medium">
+                        Buyer proposed {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit).percent}% higher price
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -454,24 +492,38 @@ const ContractDetail = () => {
               <FaCalendarAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
                 <p className="font-medium">Expected Harvest Date</p>
-                <p>{contract.expectedHarvestDate 
-                  ? (() => {
-                      try {
-                        return new Date(contract.expectedHarvestDate).toLocaleDateString();
-                      } catch (e) {
-                        return contract.expectedHarvestDate || 'Not specified';
-                      }
-                    })()
-                  : 'Not specified'}</p>
+                {isLoading && !cropDetails ? (
+                  <div className="animate-pulse flex space-x-2 items-center">
+                    <div className="h-4 w-32 bg-gray-200 rounded"></div>
+                    <span className="text-xs text-gray-400">Loading...</span>
+                  </div>
+                ) : (
+                  <p>{cropDetails?.estimatedHarvestDate || contract.expectedHarvestDate 
+                    ? (() => {
+                        try {
+                          return new Date(cropDetails?.estimatedHarvestDate || contract.expectedHarvestDate).toLocaleDateString();
+                        } catch (e) {
+                          return cropDetails?.estimatedHarvestDate || contract.expectedHarvestDate || 'Not specified';
+                        }
+                      })()
+                    : 'Not specified'}</p>
+                )}
               </div>
             </div>
-            {console.log(contract)}
+            
             <div className="flex items-start">
               <FaClipboardList className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
                 <p className="font-medium">Available Quantity</p>
-                <p>{contract.crop?.availableQuantity || 'N/A'} {contract.unit || contract.crop?.unit || 'units'}</p>
-                {contract.crop?.availableQuantity && contract.quantity && contract.quantity > contract.crop.availableQuantity && (
+                {isLoading && !cropDetails ? (
+                  <div className="animate-pulse flex space-x-2 items-center">
+                    <div className="h-4 w-24 bg-gray-200 rounded"></div>
+                    <span className="text-xs text-gray-400">Loading...</span>
+                  </div>
+                ) : (
+                  <p>{cropDetails?.availableQuantity || contract.crop?.availableQuantity || 'N/A'} {cropDetails?.unit || contract.unit || contract.crop?.unit || 'units'}</p>
+                )}
+                {(cropDetails?.availableQuantity || contract.crop?.availableQuantity) && contract.quantity && contract.quantity > (cropDetails?.availableQuantity || contract.crop?.availableQuantity) && (
                   <p className="text-xs mt-1 text-amber-600 font-medium">
                     Buyer requested more than available
                   </p>
@@ -483,7 +535,14 @@ const ContractDetail = () => {
               <FaLeaf className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
                 <p className="font-medium">Quality</p>
-                <p>{contract.crop?.quality || 'Standard quality'}</p>
+                {isLoading && !cropDetails ? (
+                  <div className="animate-pulse flex space-x-2 items-center">
+                    <div className="h-4 w-24 bg-gray-200 rounded"></div>
+                    <span className="text-xs text-gray-400">Loading...</span>
+                  </div>
+                ) : (
+                  <p>{cropDetails?.quality || contract.crop?.quality || 'Standard quality'}</p>
+                )}
               </div>
             </div>
           </div>
@@ -502,15 +561,15 @@ const ContractDetail = () => {
               <FaMoneyBillWave className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
               <div>
                 <p className="font-medium">Price Per Unit</p>
-                <div className={`text-xl font-bold ${getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'text-red-600' : 'text-blue-600'}`}>
+                <div className={`text-xl font-bold ${getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'text-red-600' : 'text-blue-600'}`}>
                   ₹{contract.pricePerUnit || 'N/A'}
                 </div>
-                {getTermDifference(contract.crop?.price, contract.pricePerUnit) && (
+                {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit) && (
                   <div className="flex items-center mt-1">
-                    <div className={`h-0.5 w-5 ${getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'bg-red-500' : 'bg-green-500'}`}></div>
-                    <span className={`text-xs ml-1 ${getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'text-red-500' : 'text-green-500'}`}>
-                      {getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? '↓' : '↑'} 
-                      ₹{getTermDifference(contract.crop?.price, contract.pricePerUnit)?.diff.toFixed(2)}
+                    <div className={`h-0.5 w-5 ${getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                    <span className={`text-xs ml-1 ${getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'text-red-500' : 'text-green-500'}`}>
+                      {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? '↓' : '↑'} 
+                      ₹{getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.diff.toFixed(2)}
                     </span>
                   </div>
                 )}
@@ -537,14 +596,15 @@ const ContractDetail = () => {
               <FaClipboardList className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
               <div>
                 <p className="font-medium">Requested Quantity</p>
-                <p className={contract.crop?.availableQuantity && contract.quantity > contract.crop.availableQuantity ? 'text-amber-600 font-semibold' : ''}>
+                <p className={cropDetails?.availableQuantity && contract.quantity > cropDetails.availableQuantity ? 'text-amber-600 font-semibold' : ''}>
                   {contract.quantity || 'N/A'} {contract.unit || 'units'}
                 </p>
-                {contract.crop?.availableQuantity && contract.quantity && (
+                {cropDetails?.availableQuantity && contract.quantity && (
                   <div className="flex items-center mt-1">
-                    <div className={`h-0.5 w-5 ${contract.quantity <= contract.crop.availableQuantity ? 'bg-green-500' : 'bg-amber-500'}`}></div>
-                    <span className={`text-xs ml-1 ${contract.quantity <= contract.crop.availableQuantity ? 'text-green-500' : 'text-amber-500'}`}>
-                      {Math.round((contract.quantity / contract.crop.availableQuantity) * 100)}% of available
+                    <div className={`h-0.5 w-5 ${contract.quantity <= cropDetails.availableQuantity ? 'bg-green-500' : 'bg-amber-500'}`}></div>
+                    <span className={`text-xs ml-1 ${contract.quantity <= cropDetails.availableQuantity ? 'text-green-500' : 'text-amber-500'}`}>
+                      {cropDetails.availableQuantity > 0 ? 
+                        Math.round((contract.quantity / cropDetails.availableQuantity) * 100) : 0}% of available
                     </span>
                   </div>
                 )}
@@ -704,6 +764,31 @@ const ContractDetail = () => {
               <div>
                 <p className="font-medium">Buyer</p>
                 <p>{contract.buyer?.name || contract.buyer?.email || 'Anonymous Buyer'}</p>
+              </div>
+            </div>
+
+            <div className="flex items-start">
+              <FaSeedling className="text-green-600 mr-3 mt-1" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Crop</p>
+                {isLoading && !cropDetails ? (
+                  <div className="animate-pulse space-y-2">
+                    <div className="h-4 w-32 bg-gray-200 rounded"></div>
+                    <div className="h-20 w-20 bg-gray-200 rounded"></div>
+                    <span className="text-xs text-gray-400">Loading crop details...</span>
+                  </div>
+                ) : (
+                  <>
+                    <p>{cropDetails?.name || contract.crop?.name || 'Agricultural product'}</p>
+                    {cropDetails?.images && cropDetails.images.length > 0 && (
+                      <img 
+                        src={cropDetails.images[0].url || cropDetails.images[0]} 
+                        alt={cropDetails.name || 'Crop'} 
+                        className="mt-2 w-20 h-20 object-cover rounded-md border border-gray-200"
+                      />
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>
