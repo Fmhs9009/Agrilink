@@ -6,7 +6,11 @@ import {
   cancelContractRequest,
   addContractRequest 
 } from '../../reducer/Slice/contractRequestsSlice';
-import { FaHandshake, FaCalendarAlt, FaMoneyBillWave,FaTractor, FaFileContract, FaCheck, FaTimes, FaClock, FaUser, FaMapMarkerAlt, FaSeedling, FaLeaf, FaClipboardList, FaDownload, FaPrint, FaExclamationTriangle } from 'react-icons/fa';
+import { 
+  FaHandshake, FaCalendarAlt, FaMoneyBillWave, FaTractor, FaFileContract, 
+  FaCheck, FaTimes, FaClock, FaUser, FaMapMarkerAlt, FaSeedling, FaLeaf, 
+  FaClipboardList, FaDownload, FaPrint, FaExclamationTriangle, FaHistory
+} from 'react-icons/fa';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
 import { api } from '../../services/api';
@@ -19,6 +23,32 @@ const ContractDetail = () => {
   const [contract, setContract] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+
+  // Custom function to determine if there's a difference between farmer and buyer terms
+  const getTermDifference = (farmerValue, buyerValue) => {
+    if (farmerValue === undefined || buyerValue === undefined) return null;
+    
+    // Convert to numbers if possible for accurate comparison
+    const numFarmer = !isNaN(parseFloat(farmerValue)) ? parseFloat(farmerValue) : farmerValue;
+    const numBuyer = !isNaN(parseFloat(buyerValue)) ? parseFloat(buyerValue) : buyerValue;
+    
+    if (numFarmer === numBuyer) return null;
+    
+    // For numeric values, calculate the difference
+    if (typeof numFarmer === 'number' && typeof numBuyer === 'number') {
+      const diff = numBuyer - numFarmer;
+      const percentDiff = (diff / numFarmer) * 100;
+      
+      return {
+        type: diff > 0 ? 'increase' : 'decrease',
+        diff: Math.abs(diff),
+        percent: Math.abs(percentDiff).toFixed(1)
+      };
+    }
+    
+    // For non-numeric values, just return that they're different
+    return { type: 'different' };
+  };
 
   // Fetch a single contract by ID if not found in Redux store
   const fetchContractById = useCallback(async () => {
@@ -343,7 +373,7 @@ const ContractDetail = () => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 max-w-4xl mx-auto" role="main" aria-labelledby="contract-title">
+    <div className="bg-white rounded-lg shadow-md p-6 max-w-6xl mx-auto" role="main" aria-labelledby="contract-title">
       <div className="flex justify-between items-start mb-6 print:mb-8">
         <h1 id="contract-title" className="text-2xl font-bold text-gray-800 flex items-center">
           <FaHandshake className="mr-2 text-green-600" aria-hidden="true" /> Contract Request Details
@@ -389,63 +419,229 @@ const ContractDetail = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-        {/* Contract Details */}
-        <section aria-labelledby="contract-details-heading">
-          <h3 id="contract-details-heading" className="text-lg font-semibold mb-4 flex items-center">
-            <FaFileContract className="mr-2 text-green-600" aria-hidden="true" /> Contract Details
-          </h3>
-          
-          <div className="space-y-4">
+      {/* Proposal Comparison Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* Farmer's Original Terms */}
+        <div className="border rounded-lg overflow-hidden shadow-sm relative">
+          <div className="bg-green-50 p-4 border-b border-green-100">
+            <h3 className="font-semibold text-lg flex items-center">
+              <FaTractor className="mr-2 text-green-600" /> Farmer's Original Terms
+            </h3>
+            <span className="absolute top-4 right-4 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Original</span>
+          </div>
+          <div className="p-5 space-y-4">
             <div className="flex items-start">
               <FaMoneyBillWave className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
-                <p className="font-medium">Contract Value</p>
+                <p className="font-medium">Price Per Unit</p>
                 <p className="text-xl font-bold text-green-600">
-                  ₹{contract.totalAmount?.toLocaleString() || (contract.quantity * contract.pricePerUnit).toLocaleString()}
+                  ₹{contract.crop?.price || 'N/A'}
                 </p>
-                <p className="text-sm text-gray-600">
-                  {contract.quantity} {contract.unit || 'units'} at ₹{contract.pricePerUnit} per unit
-                </p>
+                {getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' && (
+                  <p className="text-xs mt-1 text-red-500 font-medium">
+                    Buyer proposed {getTermDifference(contract.crop?.price, contract.pricePerUnit).percent}% lower price
+                  </p>
+                )}
+                {getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'increase' && (
+                  <p className="text-xs mt-1 text-green-500 font-medium">
+                    Buyer proposed {getTermDifference(contract.crop?.price, contract.pricePerUnit).percent}% higher price
+                  </p>
+                )}
               </div>
             </div>
-
+            
             <div className="flex items-start">
               <FaCalendarAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
-                <p className="font-medium">Delivery Date</p>
-                <p>
-                  {contract.deliveryDate 
-                    ? (() => {
-                        try {
-                          return new Date(contract.deliveryDate).toLocaleDateString();
-                        } catch (e) {
-                          return contract.deliveryDate || 'Not specified';
-                        }
-                      })()
-                    : 'Not specified'}
-                </p>
-              </div>
-            </div>
-
-            {contract.expectedHarvestDate && (
-              <div className="flex items-start">
-                <FaCalendarAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-                <div>
-                  <p className="font-medium">Expected Harvest Date</p>
-                  <p>
-                    {(() => {
+                <p className="font-medium">Expected Harvest Date</p>
+                <p>{contract.expectedHarvestDate 
+                  ? (() => {
                       try {
                         return new Date(contract.expectedHarvestDate).toLocaleDateString();
                       } catch (e) {
                         return contract.expectedHarvestDate || 'Not specified';
                       }
-                    })()}
-                  </p>
-                </div>
+                    })()
+                  : 'Not specified'}</p>
               </div>
-            )}
+            </div>
+            {console.log(contract)}
+            <div className="flex items-start">
+              <FaClipboardList className="text-green-600 mr-3 mt-1" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Available Quantity</p>
+                <p>{contract.crop?.availableQuantity || 'N/A'} {contract.unit || contract.crop?.unit || 'units'}</p>
+                {contract.crop?.availableQuantity && contract.quantity && contract.quantity > contract.crop.availableQuantity && (
+                  <p className="text-xs mt-1 text-amber-600 font-medium">
+                    Buyer requested more than available
+                  </p>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-start">
+              <FaLeaf className="text-green-600 mr-3 mt-1" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Quality</p>
+                <p>{contract.crop?.quality || 'Standard quality'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Buyer's Proposed Terms */}
+        <div className="border rounded-lg overflow-hidden shadow-sm border-blue-100 relative">
+          <div className="bg-blue-50 p-4 border-b border-blue-100">
+            <h3 className="font-semibold text-lg flex items-center">
+              <FaUser className="mr-2 text-blue-600" /> Buyer's Proposed Terms
+            </h3>
+            <span className="absolute top-4 right-4 text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">Proposal</span>
+          </div>
+          <div className="p-5 space-y-4">
+            <div className="flex items-start">
+              <FaMoneyBillWave className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Price Per Unit</p>
+                <div className={`text-xl font-bold ${getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'text-red-600' : 'text-blue-600'}`}>
+                  ₹{contract.pricePerUnit || 'N/A'}
+                </div>
+                {getTermDifference(contract.crop?.price, contract.pricePerUnit) && (
+                  <div className="flex items-center mt-1">
+                    <div className={`h-0.5 w-5 ${getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                    <span className={`text-xs ml-1 ${getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'text-red-500' : 'text-green-500'}`}>
+                      {getTermDifference(contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? '↓' : '↑'} 
+                      ₹{getTermDifference(contract.crop?.price, contract.pricePerUnit)?.diff.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-start">
+              <FaCalendarAlt className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Requested Delivery Date</p>
+                <p>{contract.deliveryDate 
+                  ? (() => {
+                      try {
+                        return new Date(contract.deliveryDate).toLocaleDateString();
+                      } catch (e) {
+                        return contract.deliveryDate || 'Not specified';
+                      }
+                    })()
+                  : 'Not specified'}</p>
+              </div>
+            </div>
+            
+            <div className="flex items-start">
+              <FaClipboardList className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Requested Quantity</p>
+                <p className={contract.crop?.availableQuantity && contract.quantity > contract.crop.availableQuantity ? 'text-amber-600 font-semibold' : ''}>
+                  {contract.quantity || 'N/A'} {contract.unit || 'units'}
+                </p>
+                {contract.crop?.availableQuantity && contract.quantity && (
+                  <div className="flex items-center mt-1">
+                    <div className={`h-0.5 w-5 ${contract.quantity <= contract.crop.availableQuantity ? 'bg-green-500' : 'bg-amber-500'}`}></div>
+                    <span className={`text-xs ml-1 ${contract.quantity <= contract.crop.availableQuantity ? 'text-green-500' : 'text-amber-500'}`}>
+                      {Math.round((contract.quantity / contract.crop.availableQuantity) * 100)}% of available
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-start">
+              <FaLeaf className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Quality Requirements</p>
+                <p>{contract.qualityRequirements || 'Standard quality'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
+      {/* Contract Total Value and Summary */}
+      <div className="bg-gray-50 p-6 rounded-lg mb-8 border border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="text-center">
+            <p className="text-gray-600 text-sm">Total Contract Value</p>
+            <p className="text-2xl font-bold text-green-600">
+              ₹{contract.totalAmount?.toLocaleString() || (contract.quantity * contract.pricePerUnit).toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              {contract.quantity} {contract.unit || 'units'} × ₹{contract.pricePerUnit}/unit
+            </p>
+          </div>
+          
+          <div className="text-center">
+            <p className="text-gray-600 text-sm">Contract Timeline</p>
+            <div className="flex items-center justify-center space-x-4 mt-2">
+              <div className="flex flex-col items-center">
+                <span className="text-xs text-gray-500">Created</span>
+                <span className="text-sm font-medium">
+                  {contract.createdAt 
+                    ? (() => {
+                        try {
+                          return new Date(contract.createdAt).toLocaleDateString();
+                        } catch (e) {
+                          return 'N/A';
+                        }
+                      })()
+                    : 'N/A'}
+                </span>
+              </div>
+              <div className="h-0.5 w-5 bg-gray-300"></div>
+              <div className="flex flex-col items-center">
+                <span className="text-xs text-gray-500">Delivery</span>
+                <span className="text-sm font-medium">
+                  {contract.deliveryDate 
+                    ? (() => {
+                        try {
+                          return new Date(contract.deliveryDate).toLocaleDateString();
+                        } catch (e) {
+                          return 'N/A';
+                        }
+                      })()
+                    : 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="text-center">
+            <p className="text-gray-600 text-sm mb-2">Contract Status</p>
+            <div className="flex flex-col items-center">
+              {getStatusBadge(contract.status)}
+              <div className="mt-2">
+                {contract.status === 'requested' && (
+                  <span className="text-xs text-gray-600">Awaiting farmer's approval</span>
+                )}
+                {contract.status === 'negotiating' && (
+                  <span className="text-xs text-gray-600">Under negotiation</span>
+                )}
+                {contract.status === 'accepted' && (
+                  <span className="text-xs text-gray-600">Contract terms accepted</span>
+                )}
+                {contract.status === 'cancelled' && (
+                  <span className="text-xs text-gray-600">Contract has been cancelled</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Contract Details Sections */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+        {/* Payment & Delivery Details */}
+        <section aria-labelledby="payment-details-heading">
+          <h3 id="payment-details-heading" className="text-lg font-semibold mb-4 flex items-center">
+            <FaMoneyBillWave className="mr-2 text-green-600" aria-hidden="true" /> Payment & Delivery
+          </h3>
+          
+          <div className="space-y-4">
             <div className="flex items-start">
               <FaMoneyBillWave className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
@@ -469,19 +665,29 @@ const ContractDetail = () => {
             </div>
 
             <div className="flex items-start">
-              <FaClipboardList className="text-green-600 mr-3 mt-1" aria-hidden="true" />
+              <FaCalendarAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
               <div>
-                <p className="font-medium">Quality Requirements</p>
-                <p>{contract.qualityRequirements || contract.qualityStandards || 'Standard quality'}</p>
+                <p className="font-medium">Delivery Date</p>
+                <p>
+                  {contract.deliveryDate 
+                    ? (() => {
+                        try {
+                          return new Date(contract.deliveryDate).toLocaleDateString();
+                        } catch (e) {
+                          return contract.deliveryDate || 'Not specified';
+                        }
+                      })()
+                    : 'Not specified'}
+                </p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Farmer & Crop Details */}
-        <section aria-labelledby="farmer-crop-details-heading">
-          <h3 id="farmer-crop-details-heading" className="text-lg font-semibold mb-4 flex items-center">
-            <FaUser className="mr-2 text-green-600" aria-hidden="true" /> Farmer & Crop Details
+        {/* Parties Information */}
+        <section aria-labelledby="parties-heading">
+          <h3 id="parties-heading" className="text-lg font-semibold mb-4 flex items-center">
+            <FaUser className="mr-2 text-green-600" aria-hidden="true" /> Contract Parties
           </h3>
           
           <div className="space-y-4">
@@ -498,29 +704,6 @@ const ContractDetail = () => {
               <div>
                 <p className="font-medium">Buyer</p>
                 <p>{contract.buyer?.name || contract.buyer?.email || 'Anonymous Buyer'}</p>
-              </div>
-            </div>
-
-            <div className="flex items-start">
-              <FaSeedling className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Crop</p>
-                <p>{contract.crop?.name || 'Agricultural product'}</p>
-                {contract.crop?.images && contract.crop.images.length > 0 && (
-                  <img 
-                    src={contract.crop.images[0].url} 
-                    alt={contract.crop.name || 'Crop'} 
-                    className="mt-2 w-20 h-20 object-cover rounded-md"
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-start">
-              <FaMoneyBillWave className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Market Price</p>
-                <p>₹{contract.crop?.price || 'N/A'}</p>
               </div>
             </div>
           </div>
@@ -643,50 +826,188 @@ const ContractDetail = () => {
         </div>
       </section>
 
+      {/* Negotiation History Section (Enhanced) */}
+      {contract.negotiationHistory && contract.negotiationHistory.length > 0 && (
+        <section aria-labelledby="negotiation-heading" className="mb-8">
+          <h3 id="negotiation-heading" className="text-lg font-semibold mb-4 flex items-center">
+            <FaHistory className="mr-2 text-green-600" aria-hidden="true" /> Negotiation History
+          </h3>
+          
+          <div className="border rounded-lg overflow-hidden shadow-sm">
+            <div className="bg-gray-50 p-4 border-b">
+              <div className="grid grid-cols-12 gap-4 font-medium text-gray-700">
+                <div className="col-span-2">Date</div>
+                <div className="col-span-2">Proposed By</div>
+                <div className="col-span-8">Changes</div>
+              </div>
+            </div>
+            
+            <div className="divide-y">
+              {contract.negotiationHistory.map((entry, index) => (
+                <div key={index} className={`p-4 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                  <div className="grid grid-cols-12 gap-4">
+                    <div className="col-span-2 text-sm text-gray-600">
+                      {(() => {
+                        try {
+                          return new Date(entry.proposedAt).toLocaleString();
+                        } catch (e) {
+                          return entry.proposedAt || 'Date not available';
+                        }
+                      })()}
+                    </div>
+                    <div className="col-span-2">
+                      <div className="flex items-center">
+                        {entry.proposedBy?._id === contract.farmer?._id ? (
+                          <FaTractor className="text-green-600 mr-1.5" size={14} />
+                        ) : (
+                          <FaUser className="text-blue-600 mr-1.5" size={14} />
+                        )}
+                        <span className={entry.proposedBy?._id === contract.farmer?._id ? 'text-green-700' : 'text-blue-700'}>
+                          {entry.proposedBy?._id === contract.farmer?._id ? 'Farmer' : 'Buyer'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="col-span-8">
+                      <div className="space-y-2">
+                        {Object.entries(entry.proposedChanges || {}).map(([key, value]) => {
+                          // Format the key name for better readability
+                          const formatKey = (key) => {
+                            switch(key) {
+                              case 'pricePerUnit': return 'Price Per Unit';
+                              case 'quantity': return 'Quantity';
+                              case 'deliveryDate': return 'Delivery Date';
+                              case 'qualityRequirements': return 'Quality Requirements';
+                              default: return key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                            }
+                          };
+                          
+                          // Format value based on its type
+                          const formatValue = (key, value) => {
+                            if (key.toLowerCase().includes('date') && value) {
+                              try {
+                                return new Date(value).toLocaleDateString();
+                              } catch (e) {
+                                return value;
+                              }
+                            }
+                            if (key === 'pricePerUnit') return `₹${value}`;
+                            if (key === 'quantity') return `${value} ${contract.unit || 'units'}`;
+                            return value.toString();
+                          };
+                          
+                          return (
+                            <div key={key} className="flex items-center p-1.5 bg-gray-100 rounded">
+                              <span className="font-medium text-sm min-w-[120px]">{formatKey(key)}:</span> 
+                              <span className="text-sm">{formatValue(key, value)}</span>
+                            </div>
+                          );
+                        })}
+                        {entry.message && (
+                          <p className="mt-2 text-sm text-gray-700 italic bg-yellow-50 p-2 rounded border-l-2 border-yellow-300">
+                            "{entry.message}"
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Add a helpful message or button if negotiation is ongoing */}
+            {contract.status === 'negotiating' && (
+              <div className="p-4 bg-blue-50 border-t border-blue-100 text-center">
+                <p className="text-sm text-blue-800 mb-2">This contract is currently under negotiation.</p>
+                <button
+                  onClick={() => navigate(`/negotiate/${contract._id}`)}
+                  className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors inline-flex items-center"
+                >
+                  <FaHandshake className="mr-1" /> Continue Negotiation
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Action Buttons */}
-      <div className="flex justify-between items-center mt-8 print:hidden">
+      <div className="flex flex-wrap justify-between items-center mt-8 print:hidden gap-4">
         <Link
           to="/contracts"
-          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors flex items-center"
           aria-label="Go back to all contracts"
         >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+          </svg>
           Back to All Contracts
         </Link>
         
-        {(contract.status === 'pending' || contract.status === 'requested') && (
-          <button
-            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
-            onClick={handleCancelContract}
-            disabled={cancelLoading || contract.status === 'cancelled'}
-            aria-label="Cancel this contract request"
-          >
-            {cancelLoading ? (
-              <>
-                <span className="animate-spin mr-2">⟳</span> Cancelling...
-              </>
-            ) : contract.status === 'cancelled' ? (
-              <>Already Cancelled</>
-            ) : (
-              <>Cancel Request</>
-            )}
-          </button>
+        {(contract.status === 'pending' || contract.status === 'requested' || contract.status === 'negotiating') && (
+          <div className="flex flex-wrap gap-3">
+            <button
+              className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center shadow-sm"
+              onClick={() => navigate(`/negotiate/${contract._id}`)}
+              aria-label="Counter offer"
+            >
+              <FaHandshake className="mr-2" /> Make Counter Offer
+            </button>
+            
+            <button
+              className="px-5 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center shadow-sm"
+              onClick={() => navigate(`/accept-contract/${contract._id}`)}
+              aria-label="Accept terms"
+            >
+              <FaCheck className="mr-2" /> Accept Terms
+            </button>
+            
+            <button
+              className="px-5 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center shadow-sm"
+              onClick={handleCancelContract}
+              disabled={cancelLoading || contract.status === 'cancelled'}
+              aria-label="Cancel this contract request"
+            >
+              {cancelLoading ? (
+                <>
+                  <span className="animate-spin mr-2">⟳</span> Cancelling...
+                </>
+              ) : contract.status === 'cancelled' ? (
+                <>Already Cancelled</>
+              ) : (
+                <><FaTimes className="mr-2" /> Decline Offer</>
+              )}
+            </button>
+          </div>
         )}
         
         {(contract.status === 'approved' || contract.status === 'accepted') && (
-          <div className="space-x-2">
+          <div className="flex flex-wrap gap-3">
             <button
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+              className="px-5 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center shadow-sm"
               onClick={() => navigate(`/messages?contractId=${contract._id}`)}
               aria-label="Contact the farmer about this contract"
             >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
+                <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
+              </svg>
               Contact Farmer
             </button>
+            
             <button
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center shadow-sm"
               onClick={() => navigate(`/payment?contractId=${contract._id}`)}
               aria-label="Make a payment for this contract"
             >
-              Make Payment
+              <FaMoneyBillWave className="mr-2" /> Make Payment
+            </button>
+            
+            <button
+              className="px-5 py-2 border border-gray-300 bg-white rounded-md hover:bg-gray-50 transition-colors flex items-center"
+              onClick={handlePrint}
+              aria-label="Print contract"
+            >
+              <FaPrint className="mr-2" /> Print Contract
             </button>
           </div>
         )}
