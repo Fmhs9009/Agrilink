@@ -205,10 +205,21 @@ const ContractDetail = () => {
           </span>
         );
       case 'pending':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800" role="status">
+            <FaClock className="mr-1" aria-hidden="true" /> Pending
+          </span>
+        );
       case 'requested':
         return (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800" role="status">
-            <FaClock className="mr-1" aria-hidden="true" /> {status === 'requested' ? 'Requested' : 'Pending'}
+            <FaClock className="mr-1" aria-hidden="true" /> Awaiting Approval
+          </span>
+        );
+      case 'negotiating':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800" role="status">
+            <FaHandshake className="mr-1" aria-hidden="true" /> Under Negotiation
           </span>
         );
       case 'completed':
@@ -675,17 +686,33 @@ const ContractDetail = () => {
             <div className="flex flex-col items-center">
               {getStatusBadge(contract.status)}
               <div className="mt-2">
-                {contract.status === 'requested' && (
-                  <span className="text-xs text-gray-600">Awaiting farmer's approval</span>
+                {contract.status === 'requested' && !getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit) && (
+                  <span className="text-xs text-gray-600">Awaiting farmer's approval without changes</span>
+                )}
+                {contract.status === 'requested' && getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit) && (
+                  <span className="text-xs text-gray-600">Awaiting farmer's approval with price changes</span>
                 )}
                 {contract.status === 'negotiating' && (
-                  <span className="text-xs text-gray-600">Under negotiation</span>
+                  <span className="text-xs text-gray-600">
+                    Parties still negotiating contract terms
+                    {contract.negotiationHistory?.length > 0 && (
+                      <> ({contract.negotiationHistory.length} {contract.negotiationHistory.length === 1 ? 'round' : 'rounds'} so far)</>
+                    )}
+                  </span>
                 )}
                 {contract.status === 'accepted' && (
-                  <span className="text-xs text-gray-600">Contract terms accepted</span>
+                  <span className="text-xs text-gray-600">
+                    Contract terms accepted
+                    {contract.negotiationHistory?.length > 0 && (
+                      <> after {contract.negotiationHistory.length} {contract.negotiationHistory.length === 1 ? 'round' : 'rounds'} of negotiation</>
+                    )}
+                  </span>
                 )}
                 {contract.status === 'cancelled' && (
-                  <span className="text-xs text-gray-600">Contract has been cancelled</span>
+                  <span className="text-xs text-gray-600">
+                    Contract has been cancelled
+                    {contract.cancelNotes && <> ({contract.cancelNotes})</>}
+                  </span>
                 )}
               </div>
             </div>
@@ -828,8 +855,46 @@ const ContractDetail = () => {
                     })()
                   : 'Date not available'}
               </p>
+              {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit) && (
+                <p className="mt-1 text-xs text-blue-600 bg-blue-50 p-2 rounded inline-block">
+                  <span className="font-medium">With initial negotiation:</span> Price changed from 
+                  <span className="font-medium"> ₹{cropDetails?.price || contract.crop?.price}</span> to 
+                  <span className="font-medium"> ₹{contract.pricePerUnit}</span>
+                  {contract.quantity && cropDetails?.availableQuantity && contract.quantity !== cropDetails.availableQuantity && (
+                    <>, Quantity requested: <span className="font-medium">{contract.quantity}</span> of <span className="font-medium">{cropDetails.availableQuantity}</span> available</>
+                  )}
+                </p>
+              )}
             </div>
           </div>
+
+          {/* If contract has negotiation history, show as a timeline item */}
+          {contract.negotiationHistory && contract.negotiationHistory.length > 0 && (
+            <div className="relative pl-12 pb-8">
+              <div className="absolute left-0 rounded-full bg-blue-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
+                <FaHistory />
+              </div>
+              <div>
+                <p className="font-medium">Negotiation Process</p>
+                <p className="text-sm text-gray-600">
+                  {contract.negotiationHistory.length} {contract.negotiationHistory.length === 1 ? 'round' : 'rounds'} of negotiation
+                </p>
+                <p className="mt-1 text-xs text-blue-600">
+                  Last updated: {(() => {
+                    const lastNegotiation = contract.negotiationHistory[contract.negotiationHistory.length - 1];
+                    if (lastNegotiation && lastNegotiation.proposedAt) {
+                      try {
+                        return new Date(lastNegotiation.proposedAt).toLocaleString();
+                      } catch (e) {
+                        return 'Date not available';
+                      }
+                    }
+                    return 'Date not available';
+                  })()}
+                </p>
+              </div>
+            </div>
+          )}
 
           {contract.status === 'cancelled' && (
             <div className="relative pl-12 pb-8">
@@ -858,7 +923,30 @@ const ContractDetail = () => {
             </div>
           )}
 
-          {contract.status !== 'pending' && contract.status !== 'requested' && contract.status !== 'cancelled' && (
+          {(contract.status === 'negotiating') && (
+            <div className="relative pl-12 pb-8">
+              <div className="absolute left-0 rounded-full bg-yellow-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
+                <FaHandshake />
+              </div>
+              <div>
+                <p className="font-medium">Currently Under Negotiation</p>
+                <p className="text-sm text-gray-600">
+                  Awaiting response from {contract.negotiationHistory && 
+                    contract.negotiationHistory.length > 0 && 
+                    contract.negotiationHistory[contract.negotiationHistory.length - 1]?.proposedBy?._id === contract.farmer?._id 
+                    ? 'buyer' : 'farmer'}
+                </p>
+                <button
+                  onClick={() => navigate(`/negotiate/${contract._id}`)}
+                  className="mt-2 text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors inline-flex items-center"
+                >
+                  <FaHandshake className="mr-1" /> Continue Negotiation
+                </button>
+              </div>
+            </div>
+          )}
+
+          {contract.status !== 'pending' && contract.status !== 'requested' && contract.status !== 'cancelled' && contract.status !== 'negotiating' && (
             <div className="relative pl-12 pb-8">
               <div className="absolute left-0 rounded-full bg-blue-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
                 {contract.status === 'approved' || contract.status === 'accepted' ? <FaCheck /> : <FaTimes />}
@@ -877,6 +965,17 @@ const ContractDetail = () => {
                         }
                       })()
                     : 'Date not available'}
+                </p>
+                <p className="mt-1 text-xs text-green-600 bg-green-50 p-2 rounded">
+                  <span className="font-medium">Final terms:</span> Price: ₹{contract.pricePerUnit}, 
+                  Quantity: {contract.quantity} {contract.unit || 'units'}, 
+                  Delivery: {(() => {
+                    try {
+                      return new Date(contract.deliveryDate).toLocaleDateString();
+                    } catch (e) {
+                      return 'Not specified';
+                    }
+                  })()}
                 </p>
                 {contract.farmerNotes && (
                   <p className="mt-1 text-sm bg-gray-50 p-2 rounded">
