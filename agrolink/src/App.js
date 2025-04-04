@@ -50,6 +50,10 @@ const ContractRespondPage = lazy(() => import("./pages/contracts/ContractRespond
 // Contract components
 const ContractRequestsList = lazy(() => import("./components/contract/ContractRequestsList"));
 
+// Chat components
+const ChatList = lazy(() => import("./components/chat/ChatList"));
+const ChatInterface = lazy(() => import("./components/chat/ChatInterface"));
+
 // Loading fallback component
 const PageLoader = () => (
   <div className="flex justify-center items-center min-h-screen">
@@ -283,6 +287,24 @@ function App() {
                 <ProtectedRoute>
                   <Suspense fallback={<PageLoader />}>
                     <ContractsPage />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+            </Route>
+            
+            {/* Chat Routes */}
+            <Route path="chat">
+              <Route index element={
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <ChatList />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path=":contractId" element={
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <ChatInterface />
                   </Suspense>
                 </ProtectedRoute>
               } />

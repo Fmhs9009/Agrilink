@@ -12,6 +12,10 @@ const errorMiddleware = require("./middleware/errorMiddleware");
 const contractRoutes = require('./Routes/contractRoutes');
 const uploadRoutes = require('./Routes/uploadRoutes');
 const notificationRoutes = require('./routes/notificationRoute');
+const chatRoutes = require('./routes/chatRoutes');
+const http = require('http');
+const { Server } = require('socket.io');
+const setupSocketServer = require('./socket/socketManager');
 
 const app = Express();
 
@@ -49,6 +53,7 @@ app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/contracts", contractRoutes);
 app.use("/api/v1/upload", uploadRoutes);
 app.use("/api/v1", notificationRoutes);
+app.use("/api/v1/chat", chatRoutes);
 
 // Serve temp files
 app.use('/tmp', Express.static(path.join(__dirname, 'tmp')));
@@ -63,7 +68,22 @@ app.get("/", (req, res) => {
 // Error Handling Middleware
 app.use(errorMiddleware);
 
+// Create HTTP server
+const server = http.createServer(app);
+
+// Initialize Socket.io
+const io = new Server(server, {
+  cors: {
+    origin: ["http://localhost:3000", "http://localhost:3001"],
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
+
+// Setup socket server
+setupSocketServer(io);
+
 // Start the server
-const server = app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

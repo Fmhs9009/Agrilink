@@ -380,7 +380,7 @@ const ContractDetail = () => {
     );
   }
   
-  console.log("Final contract state:", contract);
+  // console.log("Final contract state:", contract);
   
   if (!contract) {
     return (
@@ -937,10 +937,10 @@ const ContractDetail = () => {
                     ? 'buyer' : 'farmer'}
                 </p>
                 <button
-                  onClick={() => navigate(`/negotiate/${contract._id}`)}
+                  onClick={() => navigate(`/chat/${contract._id}`)}
                   className="mt-2 text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors inline-flex items-center"
                 >
-                  <FaHandshake className="mr-1" /> Continue Negotiation
+                  <FaHandshake className="mr-1" /> Chat/Negotiate
                 </button>
               </div>
             </div>
@@ -1103,10 +1103,10 @@ const ContractDetail = () => {
               <div className="p-4 bg-blue-50 border-t border-blue-100 text-center">
                 <p className="text-sm text-blue-800 mb-2">This contract is currently under negotiation.</p>
                 <button
-                  onClick={() => navigate(`/negotiate/${contract._id}`)}
+                  onClick={() => navigate(`/chat/${contract._id}`)}
                   className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors inline-flex items-center"
                 >
-                  <FaHandshake className="mr-1" /> Continue Negotiation
+                  <FaHandshake className="mr-1" /> Chat/Negotiate
                 </button>
               </div>
             )}
@@ -1131,18 +1131,10 @@ const ContractDetail = () => {
           <div className="flex flex-wrap gap-3">
             <button
               className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center shadow-sm"
-              onClick={() => navigate(`/negotiate/${contract._id}`)}
-              aria-label="Counter offer"
+              onClick={() => navigate(`/chat/${contract._id}`)}
+              aria-label="Chat or negotiate"
             >
-              <FaHandshake className="mr-2" /> Make Counter Offer
-            </button>
-            
-            <button
-              className="px-5 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center shadow-sm"
-              onClick={() => navigate(`/accept-contract/${contract._id}`)}
-              aria-label="Accept terms"
-            >
-              <FaCheck className="mr-2" /> Accept Terms
+              <FaHandshake className="mr-2" /> Chat/Negotiate
             </button>
             
             <button
