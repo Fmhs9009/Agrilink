@@ -38,6 +38,7 @@ const ChatInterface = () => {
     specialRequirements: ''
   });
   const [socketConnected, setSocketConnected] = useState(false);
+  const [connectionIssue, setConnectionIssue] = useState(false);
   
   // Determine if user is farmer or buyer
   const isFarmer = contract?.farmer?._id === user?._id;
@@ -46,9 +47,20 @@ const ChatInterface = () => {
   // Initialize socket connection
   useEffect(() => {
     const token = authService.getToken();
-    if (token && !socketService.isSocketConnected()) {
-      socketService.init(token);
-    }
+    
+    const setupSocket = async () => {
+      try {
+        if (token && !socketService.isSocketConnected()) {
+          await socketService.init(token);
+          setSocketConnected(socketService.isSocketConnected());
+        }
+      } catch (error) {
+        console.error("Socket initialization error:", error);
+        setSocketConnected(false);
+      }
+    };
+    
+    setupSocket();
     
     return () => {
       // Clean up socket event listeners
@@ -72,7 +84,23 @@ const ChatInterface = () => {
     // Listen for new messages
     const newMessageUnsub = socketService.on('new_message', (newMessage) => {
       if (newMessage && newMessage.contractId === contractId) {
-        setMessages(prev => [...prev, newMessage]);
+        // Check if this is replacing a temporary message
+        setMessages(prev => {
+          const tempIndex = prev.findIndex(msg => 
+            msg.isTemp && msg.senderId._id === newMessage.senderId._id && 
+            msg.content === newMessage.content
+          );
+          
+          if (tempIndex >= 0) {
+            // Replace temp message with real one
+            const newMessages = [...prev];
+            newMessages[tempIndex] = newMessage;
+            return newMessages;
+          } else {
+            // Add as new message if not replacing temp
+            return [...prev, newMessage];
+          }
+        });
       }
     });
     
@@ -104,6 +132,45 @@ const ChatInterface = () => {
       errorUnsub();
     };
   }, [contractId, user._id]);
+  
+  // Listen for socket connection status changes
+  useEffect(() => {
+    const connectionStatusListener = socketService.on('__internal__connection_status', (status) => {
+      setSocketConnected(status.connected);
+      setConnectionIssue(!status.connected);
+      
+      if (status.connected && connectionIssue) {
+        // Reconnected after an issue - refresh messages
+        refreshMessages();
+      }
+    });
+    
+    return () => {
+      if (connectionStatusListener) connectionStatusListener();
+    };
+  }, [connectionIssue]);
+  
+  // Function to refresh messages after reconnection
+  const refreshMessages = async () => {
+    try {
+      const response = await api.get(`/chat/contracts/${contractId}/messages`);
+      
+      if (response.data && response.data.messages) {
+        // Replace any temporary messages with real ones
+        setMessages(response.data.messages);
+        
+        // Restart the connection lost indicator
+        setConnectionIssue(false);
+        
+        // Update oldest message timestamp for pagination
+        if (response.data.messages.length > 0) {
+          setOldestMessageTimestamp(response.data.messages[0].createdAt);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing messages:', error);
+    }
+  };
   
   // Fetch contract details
   useEffect(() => {
@@ -237,46 +304,56 @@ const ChatInterface = () => {
     try {
       setSendingMessage(true);
       
+      // Create a temporary message for UI feedback
+      const tempMessage = {
+        _id: 'temp-' + Date.now(),
+        contractId,
+        senderId: {
+          _id: user._id,
+          Name: user.Name,
+          photo: user.photo
+        },
+        recipientId: otherParty?._id,
+        messageType: 'text',
+        content: messageText,
+        createdAt: new Date().toISOString(),
+        isTemp: true
+      };
+      
+      // Add temp message to UI immediately
+      setMessages(prev => [...prev, tempMessage]);
+      
+      // Clear input early for better UX
+      const messageToSend = messageText;
+      setMessageText('');
+      
       // If socket is connected, send via socket for real-time delivery
       if (socketService.isSocketConnected()) {
         const messageSent = socketService.sendMessage(contractId, {
-          content: messageText,
+          content: messageToSend,
           messageType: 'text'
         });
         
-        if (messageSent) {
-          setMessageText(''); // Clear input early for better UX
-        } else {
+        if (!messageSent) {
           // Fallback to REST API if socket fails
-          sendViaRestApi();
+          await api.post(`/chat/contracts/${contractId}/messages`, {
+            content: messageToSend,
+            messageType: 'text'
+          });
         }
       } else {
         // Use REST API if socket is not connected
-        sendViaRestApi();
+        await api.post(`/chat/contracts/${contractId}/messages`, {
+          content: messageToSend,
+          messageType: 'text'
+        });
       }
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Failed to send message');
-      setSendingMessage(false);
-    }
-  };
-  
-  // Send message via REST API
-  const sendViaRestApi = async () => {
-    try {
-      const response = await api.post(`/chat/contracts/${contractId}/messages`, {
-        content: messageText,
-        messageType: 'text'
-      });
       
-      if (response.data && response.data.message) {
-        // Add the new message to the chat
-        setMessages(prevMessages => [...prevMessages, response.data.message]);
-        setMessageText(''); // Clear input
-      }
-    } catch (error) {
-      console.error('REST API error sending message:', error);
-      toast.error('Failed to send message via API');
+      // Remove temporary message on error
+      setMessages(prev => prev.filter(msg => msg._id !== 'temp-' + Date.now()));
     } finally {
       setSendingMessage(false);
     }
@@ -305,6 +382,42 @@ const ChatInterface = () => {
         return;
       }
       
+      // Create a temporary message for UI feedback
+      const tempId = 'temp-offer-' + Date.now();
+      const tempOfferMessage = {
+        _id: tempId,
+        contractId,
+        senderId: {
+          _id: user._id,
+          Name: user.Name,
+          photo: user.photo
+        },
+        recipientId: otherParty?._id,
+        messageType: 'counterOffer',
+        content: `I'm proposing new terms for our contract.`,
+        offerDetails: {
+          pricePerUnit: parseFloat(offerFormData.pricePerUnit),
+          quantity: parseInt(offerFormData.quantity),
+          deliveryDate: new Date(offerFormData.deliveryDate).toISOString(),
+          qualityRequirements: offerFormData.qualityRequirements,
+          specialRequirements: offerFormData.specialRequirements
+        },
+        createdAt: new Date().toISOString(),
+        isTemp: true
+      };
+      
+      // Add temp offer to UI immediately
+      setMessages(prev => [...prev, tempOfferMessage]);
+      
+      // Hide form after sending
+      setShowOfferForm(false);
+      
+      // Update contract status in UI immediately for better UX
+      setContract(prev => ({
+        ...prev,
+        status: 'negotiating'
+      }));
+      
       const offerMessage = {
         content: `I'm proposing new terms for our contract.`,
         messageType: 'counterOffer',
@@ -321,52 +434,33 @@ const ChatInterface = () => {
       if (socketService.isSocketConnected()) {
         const messageSent = socketService.sendMessage(contractId, offerMessage);
         
-        if (messageSent) {
-          setShowOfferForm(false); // Hide form after sending
-          
-          // Update contract status in UI
-          setContract(prev => ({
-            ...prev,
-            status: 'negotiating'
-          }));
-          
-          toast.success('Counter offer sent successfully');
-        } else {
+        if (!messageSent) {
           // Fallback to REST API if socket fails
-          sendOfferViaRestApi(offerMessage);
+          await api.post(`/chat/contracts/${contractId}/messages`, offerMessage);
         }
       } else {
         // Use REST API if socket is not connected
-        sendOfferViaRestApi(offerMessage);
+        await api.post(`/chat/contracts/${contractId}/messages`, offerMessage);
       }
+      
+      toast.success('Counter offer sent successfully');
     } catch (error) {
       console.error('Error sending counter offer:', error);
       toast.error('Failed to send counter offer');
-      setSendingMessage(false);
-    }
-  };
-  
-  // Send offer via REST API
-  const sendOfferViaRestApi = async (offerMessage) => {
-    try {
-      const response = await api.post(`/chat/contracts/${contractId}/messages`, offerMessage);
       
-      if (response.data && response.data.message) {
-        // Add the new message to the chat
-        setMessages(prevMessages => [...prevMessages, response.data.message]);
-        setShowOfferForm(false); // Hide form after sending
-        
-        // Update contract status in UI
+      // Remove temporary offer on error
+      setMessages(prev => prev.filter(msg => !msg.isTemp));
+      
+      // Revert UI changes on error
+      setShowOfferForm(true);
+      
+      // Only revert contract status if we're not already negotiating
+      if (contract?.status !== 'negotiating') {
         setContract(prev => ({
           ...prev,
-          status: 'negotiating'
+          status: prev.status
         }));
-        
-        toast.success('Counter offer sent successfully');
       }
-    } catch (error) {
-      console.error('REST API error sending offer:', error);
-      toast.error('Failed to send counter offer via API');
     } finally {
       setSendingMessage(false);
     }
@@ -634,6 +728,13 @@ const ChatInterface = () => {
                 `}>
                   {contract?.status?.charAt(0).toUpperCase() + contract?.status?.slice(1)}
                 </span>
+                
+                {/* Connection status indicator */}
+                <span className="mx-1">•</span>
+                <span className={`flex items-center ${socketConnected ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'} mr-1`}></span>
+                  {socketConnected ? 'Connected' : 'Offline'}
+                </span>
               </div>
             </div>
           </div>
@@ -649,6 +750,20 @@ const ChatInterface = () => {
           </button>
         </div>
       </div>
+      
+      {/* Connection issue banner */}
+      {connectionIssue && (
+        <div className="bg-yellow-100 text-yellow-800 text-sm px-4 py-2 flex items-center justify-center">
+          <FaExclamationTriangle className="mr-2" />
+          Connection issues detected. Some messages may not send or appear immediately.
+          <button 
+            onClick={refreshMessages}
+            className="ml-2 text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Refresh
+          </button>
+        </div>
+      )}
       
       {/* Chat messages */}
       <div 

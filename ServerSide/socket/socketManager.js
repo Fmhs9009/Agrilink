@@ -57,6 +57,13 @@ const setupSocketServer = (io) => {
   io.on('connection', (socket) => {
     console.log(`User connected: ${socket.user?.Name || 'Unknown'} (${socket.user?._id || 'Unknown ID'})`);
     
+    // Handle ping for latency checking
+    socket.on('ping', (callback) => {
+      if (typeof callback === 'function') {
+        callback();
+      }
+    });
+    
     // Join chat room
     socket.on('join_chat', async ({ contractId }) => {
       try {

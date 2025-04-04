@@ -31,9 +31,10 @@ class SocketService {
         },
         transports: ['websocket', 'polling'],
         reconnection: true,
+        reconnectionAttempts: 10,
         reconnectionDelay: 1000,
-        reconnectionAttempts: this.maxReconnectAttempts,
-        timeout: 10000
+        reconnectionDelayMax: 5000,
+        timeout: 20000
       });
 
       // Connection event handlers
@@ -41,16 +42,28 @@ class SocketService {
         console.log('Socket connected!');
         this.isConnected = true;
         this.reconnectAttempts = 0;
+        // Let the UI know we're connected
+        this.broadcastEvent('connection_status', { connected: true });
       });
 
       this.socket.on('connect_error', (error) => {
         console.error('Socket connection error:', error);
         this.reconnectAttempts++;
+        this.isConnected = false;
+        
+        // Let the UI know we have a connection error
+        this.broadcastEvent('connection_status', { 
+          connected: false, 
+          error: 'Connection error' 
+        });
         
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
           console.error('Max reconnection attempts reached');
-          toast.error('Could not connect to chat server. Please try again later.');
+          toast.error('Could not connect to chat server. Please refresh the page.');
           this.disconnect();
+        } else if (this.reconnectAttempts > 3) {
+          // Only show toast after multiple failures to avoid spamming
+          toast.error('Chat server connection issues. Trying to reconnect...');
         }
       });
 
@@ -58,9 +71,16 @@ class SocketService {
         console.log('Socket disconnected:', reason);
         this.isConnected = false;
         
+        // Let the UI know we're disconnected
+        this.broadcastEvent('connection_status', { connected: false });
+        
         if (reason === 'io server disconnect') {
           // Server disconnected us, need to manually reconnect
-          this.reconnect();
+          setTimeout(() => this.reconnect(), 1000);
+        } else if (reason === 'transport close' || reason === 'ping timeout') {
+          // Network issue, try reconnecting
+          setTimeout(() => this.reconnect(), 1000);
+          toast.error('Lost connection to chat server. Reconnecting...');
         }
       });
 
@@ -71,11 +91,31 @@ class SocketService {
         this.disconnect();
       });
 
+      // Ping/pong to check connection
+      setInterval(() => {
+        if (this.isConnected) {
+          const start = Date.now();
+          this.socket.volatile.emit('ping', () => {
+            const latency = Date.now() - start;
+            console.log(`Socket ping: ${latency}ms`);
+          });
+        }
+      }, 30000); // Every 30 seconds
+
       return this.socket;
     } catch (error) {
       console.error('Error initializing socket:', error);
       toast.error('Error connecting to chat server');
+      this.isConnected = false;
       return null;
+    }
+  }
+
+  // Broadcast an event to all listeners
+  broadcastEvent(event, data) {
+    // This helps components respond to socket state changes
+    if (this.socket) {
+      this.socket.emit('__internal__' + event, data);
     }
   }
 
@@ -123,13 +163,18 @@ class SocketService {
 
   // Send a message
   sendMessage(contractId, message) {
-    if (!this.isConnected) {
+    if (!this.isConnected || !this.socket) {
       console.warn('Socket not connected. Cannot send message.');
       return false;
     }
 
-    this.socket.emit('send_message', { contractId, message });
-    return true;
+    try {
+      this.socket.emit('send_message', { contractId, message });
+      return true;
+    } catch (error) {
+      console.error('Error emitting message event:', error);
+      return false;
+    }
   }
 
   // Mark messages as read
