@@ -24,7 +24,7 @@ const setupSocketServer = (io) => {
       try {
         // Verify the JWT token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
+        //
         // Get user from database
         const user = await User.findById(decoded.id);
         
