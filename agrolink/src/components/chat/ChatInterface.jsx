@@ -46,96 +46,243 @@ const ChatInterface = () => {
   
   // Initialize socket connection
   useEffect(() => {
-    const token = authService.getToken();
+    let socketInitialized = false;
     
     const setupSocket = async () => {
       try {
+        const token = authService.getToken();
+        
         if (token && !socketService.isSocketConnected()) {
+          console.log("Initializing socket connection...");
           await socketService.init(token);
-          setSocketConnected(socketService.isSocketConnected());
+          socketInitialized = true;
+        } else if (socketService.isSocketConnected()) {
+          console.log("Socket already connected");
+          socketInitialized = true;
         }
+        
+        // Set state based on actual connection status
+        setSocketConnected(socketService.isSocketConnected());
+        
+        // Check connection status periodically
+        const checkConnection = setInterval(() => {
+          const isConnected = socketService.isSocketConnected();
+          setSocketConnected(isConnected);
+          
+          if (!isConnected && socketInitialized) {
+            console.log("Connection lost, attempting to reconnect...");
+            socketService.reconnect();
+          }
+        }, 3000);
+        
+        return () => {
+          clearInterval(checkConnection);
+        };
       } catch (error) {
         console.error("Socket initialization error:", error);
         setSocketConnected(false);
       }
     };
     
-    setupSocket();
+    const cleanup = setupSocket();
     
     return () => {
-      // Clean up socket event listeners
+      // Clean up socket event listeners and connection checker
       if (socketService.isSocketConnected()) {
         socketService.leaveChat(contractId);
+      }
+      if (cleanup && typeof cleanup === 'function') {
+        cleanup();
       }
     };
   }, [contractId]);
   
   // Socket event listeners
   useEffect(() => {
-    if (!socketService.isSocketConnected()) {
+    if (!socketService.getSocket()) {
+      console.log("No socket available, skipping event listeners");
       return;
     }
     
-    setSocketConnected(true);
+    console.log("Setting up socket event listeners");
     
     // Join the chat room
     socketService.joinChat(contractId);
     
-    // Listen for new messages
-    const newMessageUnsub = socketService.on('new_message', (newMessage) => {
-      if (newMessage && newMessage.contractId === contractId) {
-        // Check if this is replacing a temporary message
-        setMessages(prev => {
-          const tempIndex = prev.findIndex(msg => 
-            msg.isTemp && msg.senderId._id === newMessage.senderId._id && 
-            msg.content === newMessage.content
-          );
-          
-          if (tempIndex >= 0) {
-            // Replace temp message with real one
-            const newMessages = [...prev];
-            newMessages[tempIndex] = newMessage;
-            return newMessages;
-          } else {
-            // Add as new message if not replacing temp
-            return [...prev, newMessage];
-          }
-        });
+    // Listen for message sent acknowledgement
+    const messageSentUnsub = socketService.on('message_sent', (data) => {
+      if (data && data.success) {
+        console.log('Message sent acknowledgement received:', data);
+        // Ensure spinner stops on any message_sent event
+        setSendingMessage(false);
       }
     });
     
+    // Listen for new messages with correct handler
+    const newMessageUnsub = socketService.on('new_message', (newMessage) => {
+      if (newMessage && newMessage.contractId === contractId) {
+        console.log('New message received via socket:', newMessage);
+        
+        // Check if this is replacing a temporary message
+        setMessages(prev => {
+          // If message already exists (by ID), don't add it again
+          const messageExists = prev.some(msg => msg._id === newMessage._id);
+          if (messageExists) {
+            return prev;
+          }
+          
+          // For system messages (like acceptance), match on content and type
+          if (newMessage.messageType === 'systemMessage') {
+            const tempIndex = prev.findIndex(msg => 
+              msg.isTemp && 
+              msg.messageType === 'systemMessage' &&
+              msg.content.includes('accepted the contract offer')
+            );
+            
+            if (tempIndex >= 0) {
+              // Replace temp message with real one
+              const newMessages = [...prev];
+              newMessages[tempIndex] = newMessage;
+              return newMessages;
+            }
+          } else {
+            // For regular or offer messages, match on content and sender
+            const tempIndex = prev.findIndex(msg => 
+              msg.isTemp && 
+              msg.senderId._id === newMessage.senderId._id && 
+              msg.content === newMessage.content &&
+              msg.messageType === newMessage.messageType
+            );
+            
+            if (tempIndex >= 0) {
+              // Replace temp message with real one
+              const newMessages = [...prev];
+              newMessages[tempIndex] = newMessage;
+              return newMessages;
+            }
+          }
+          
+          // If no temp message found, add as new message
+          return [...prev, newMessage];
+        });
+        
+        // Auto scroll to bottom when new message arrives
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 100);
+      }
+    });
+    
+    // Debug connection status
+    console.log("Current socket connected status:", socketService.isSocketConnected());
+    setSocketConnected(socketService.isSocketConnected());
+    
+    return () => {
+      // Clean up event listeners
+      console.log("Cleaning up socket event listeners");
+      if (messageSentUnsub) messageSentUnsub();
+      if (newMessageUnsub) newMessageUnsub();
+      
+      // Other event listeners will be cleaned up in the main socket cleanup
+    };
+  }, [contractId, socketService.getSocket()]);
+  
+  // Separate useEffect for other socket events to avoid too many reconnects
+  useEffect(() => {
+    if (!socketService.getSocket()) {
+      return;
+    }
+    
     // Listen for message status updates
     const messagesReadUnsub = socketService.on('messages_read', (data) => {
-      if (data.contractId === contractId && data.userId !== user._id) {
-        // Update UI to show messages have been read
-        console.log('Messages read by other user');
+      if (data && data.contractId === contractId && data.userId !== user._id) {
+        console.log('Messages read by other user:', data);
       }
     });
     
     // Listen for contract status updates
     const contractUpdatedUnsub = socketService.on('contract_updated', (data) => {
-      if (data.contractId === contractId) {
-        setContract(prev => prev ? { ...prev, status: data.status } : prev);
+      if (data && data.contractId === contractId) {
+        console.log('Contract updated:', data);
+        
+        // Update contract status in UI
+        setContract(prev => {
+          if (prev) {
+            return {
+              ...prev,
+              status: data.status
+            };
+          }
+          return prev;
+        });
+        
+        // If contract was accepted, fetch messages again to ensure system message appears
+        if (data.status === 'accepted') {
+          refreshMessages();
+        }
       }
     });
     
     // Listen for errors
     const errorUnsub = socketService.on('error', (error) => {
       toast.error(error.message || 'Socket error occurred');
+      // Ensure spinner stops on any error
+      setSendingMessage(false);
+    });
+    
+    // Listen for offer accepted confirmation
+    const offerAcceptedUnsub = socketService.on('offer_accepted', (data) => {
+      if (data && data.contractId === contractId) {
+        console.log('Offer accepted confirmation:', data);
+        // Just ensure the spinner stops
+        setSendingMessage(false);
+      }
     });
     
     return () => {
       // Clean up event listeners
-      newMessageUnsub();
-      messagesReadUnsub();
-      contractUpdatedUnsub();
-      errorUnsub();
+      if (messagesReadUnsub) messagesReadUnsub();
+      if (contractUpdatedUnsub) contractUpdatedUnsub();
+      if (errorUnsub) errorUnsub();
+      if (offerAcceptedUnsub) offerAcceptedUnsub();
     };
-  }, [contractId, user._id]);
+  }, [contractId, user._id, socketService.getSocket()]);
+  
+  // Function to force reconnect socket
+  const forceReconnect = () => {
+    try {
+      console.log("Forcing socket reconnection...");
+      socketService.disconnect();
+      
+      setTimeout(() => {
+        const token = authService.getToken();
+        if (token) {
+          socketService.init(token);
+          
+          // After reconnection, check if we need to refresh messages
+          setTimeout(() => {
+            if (socketService.isSocketConnected()) {
+              setSocketConnected(true);
+              refreshMessages();
+              socketService.joinChat(contractId);
+            } else {
+              toast.error("Could not reconnect. Try refreshing the page.");
+            }
+          }, 1000);
+        }
+      }, 500);
+    } catch (error) {
+      console.error("Error reconnecting socket:", error);
+      toast.error("Connection error. Please refresh the page.");
+    }
+  };
   
   // Listen for socket connection status changes
   useEffect(() => {
     const connectionStatusListener = socketService.on('__internal__connection_status', (status) => {
+      console.log("Connection status changed:", status);
       setSocketConnected(status.connected);
       setConnectionIssue(!status.connected);
       
@@ -304,9 +451,12 @@ const ChatInterface = () => {
     try {
       setSendingMessage(true);
       
+      // Create a temporary ID that is more unique and trackable
+      const tempId = `temp-${user._id}-${Date.now()}`;
+      
       // Create a temporary message for UI feedback
       const tempMessage = {
-        _id: 'temp-' + Date.now(),
+        _id: tempId,
         contractId,
         senderId: {
           _id: user._id,
@@ -348,14 +498,24 @@ const ChatInterface = () => {
           messageType: 'text'
         });
       }
+      
+      // Safety timeout to ensure spinner stops after a maximum time
+      // This prevents spinner getting stuck if server doesn't acknowledge
+      setTimeout(() => {
+        setSendingMessage(false);
+      }, 3000);
+      
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Failed to send message');
       
       // Remove temporary message on error
-      setMessages(prev => prev.filter(msg => msg._id !== 'temp-' + Date.now()));
+      setMessages(prev => prev.filter(msg => !msg.isTemp));
     } finally {
-      setSendingMessage(false);
+      // Ensure spinner stops regardless of what happened
+      setTimeout(() => {
+        setSendingMessage(false);
+      }, 500);
     }
   };
   
@@ -466,59 +626,67 @@ const ChatInterface = () => {
     }
   };
   
-  // Handle accepting an offer
+  // Accept offer function
   const handleAcceptOffer = async () => {
     try {
+      // Show confirmation
+      const confirmed = window.confirm("Are you sure you want to accept this offer?");
+      if (!confirmed) return;
+      
       setSendingMessage(true);
+      
+      // Create a temporary system message for immediate UI feedback
+      const tempId = 'temp-accept-' + Date.now();
+      const tempSystemMessage = {
+        _id: tempId,
+        contractId,
+        senderId: {
+          _id: user._id,
+          Name: user.Name,
+          photo: user.photo
+        },
+        recipientId: otherParty?._id, 
+        messageType: 'systemMessage',
+        content: `${user.Name} has accepted the contract offer.`,
+        createdAt: new Date().toISOString(),
+        isTemp: true
+      };
+      
+      // Add temp system message to UI immediately
+      setMessages(prev => [...prev, tempSystemMessage]);
+      
+      // Update contract status in UI immediately
+      setContract(prev => ({
+        ...prev,
+        status: 'accepted'
+      }));
+      
+      // Display success message immediately
+      toast.success('Offer accepted successfully');
       
       // If socket is connected, send via socket for real-time delivery
       if (socketService.isSocketConnected()) {
-        // Emit accept offer event via socket
-        socketService.getSocket().emit('accept_offer', { contractId });
-        
-        // Update contract status in UI immediately for better UX
-        setContract(prev => ({
-          ...prev,
-          status: 'accepted'
-        }));
-        
-        toast.success('Offer accepted successfully!');
-        
-        // We don't need to refresh messages as socket will push the system message
+        socketService.getSocket().emit('accept_offer', {
+          contractId
+        });
       } else {
-        // Fall back to REST API
-        acceptOfferViaRestApi();
+        // Use REST API if socket is not connected
+        await api.post(`/chat/contracts/${contractId}/accept-offer`);
       }
+      
+      // No need for another toast since we already showed success message
+      
     } catch (error) {
       console.error('Error accepting offer:', error);
       toast.error('Failed to accept offer');
-      setSendingMessage(false);
-    }
-  };
-  
-  // Accept offer via REST API
-  const acceptOfferViaRestApi = async () => {
-    try {
-      const response = await api.put(`/chat/contracts/${contractId}/accept-offer`);
       
-      if (response.data && response.data.success) {
-        toast.success('Offer accepted successfully!');
-        
-        // Update contract status in UI
-        setContract(prev => ({
-          ...prev,
-          status: 'accepted'
-        }));
-        
-        // Refresh messages to show system message
-        const messagesResponse = await api.get(`/chat/contracts/${contractId}/messages`);
-        if (messagesResponse.data && messagesResponse.data.messages) {
-          setMessages(messagesResponse.data.messages);
-        }
-      }
-    } catch (error) {
-      console.error('REST API error accepting offer:', error);
-      toast.error('Failed to accept offer via API');
+      // Revert UI changes on error
+      setMessages(prev => prev.filter(msg => !msg.isTemp));
+      
+      setContract(prev => ({
+        ...prev,
+        status: 'negotiating'
+      }));
     } finally {
       setSendingMessage(false);
     }
@@ -755,12 +923,26 @@ const ChatInterface = () => {
       {connectionIssue && (
         <div className="bg-yellow-100 text-yellow-800 text-sm px-4 py-2 flex items-center justify-center">
           <FaExclamationTriangle className="mr-2" />
-          Connection issues detected. Some messages may not send or appear immediately.
+          Connection issues detected. Messages may not appear in real-time.
           <button 
-            onClick={refreshMessages}
+            onClick={forceReconnect}
             className="ml-2 text-blue-600 hover:text-blue-800 font-medium"
           >
-            Refresh
+            Reconnect
+          </button>
+        </div>
+      )}
+      
+      {/* Socket status indicator when not in connection issue state */}
+      {!connectionIssue && !socketConnected && (
+        <div className="bg-red-100 text-red-800 text-sm px-4 py-2 flex items-center justify-center">
+          <FaExclamationTriangle className="mr-2" />
+          Offline mode. Messages will not update in real-time.
+          <button 
+            onClick={forceReconnect}
+            className="ml-2 text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Try to Connect
           </button>
         </div>
       )}

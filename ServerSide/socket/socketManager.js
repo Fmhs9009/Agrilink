@@ -57,6 +57,17 @@ const setupSocketServer = (io) => {
   io.on('connection', (socket) => {
     console.log(`User connected: ${socket.user?.Name || 'Unknown'} (${socket.user?._id || 'Unknown ID'})`);
     
+    // Debug socket ID for tracking
+    const socketId = socket.id;
+    console.log(`Socket ID: ${socketId}`);
+    
+    // Send immediate connection acknowledgement
+    socket.emit('connection_status', { 
+      connected: true,
+      userId: socket.user?._id,
+      socketId: socketId
+    });
+    
     // Handle ping for latency checking
     socket.on('ping', (callback) => {
       if (typeof callback === 'function') {
@@ -64,7 +75,7 @@ const setupSocketServer = (io) => {
       }
     });
     
-    // Join chat room
+    // Handle join chat room with more logging
     socket.on('join_chat', async ({ contractId }) => {
       try {
         if (!contractId) {
@@ -72,10 +83,13 @@ const setupSocketServer = (io) => {
           return;
         }
         
+        console.log(`Join chat request: User ${socket.user?.Name} (${socket.user?._id}) for contract ${contractId}`);
+        
         // Validate contract existence and user's access
         const contract = await Contract.findById(contractId);
         
         if (!contract) {
+          console.log(`Contract not found: ${contractId}`);
           socket.emit('error', { message: 'Contract not found' });
           return;
         }
@@ -86,6 +100,7 @@ const setupSocketServer = (io) => {
         const buyerId = contract.buyer?.toString();
         
         if (userId !== farmerId && userId !== buyerId) {
+          console.log(`Unauthorized access: User ${userId} not part of contract ${contractId}`);
           socket.emit('error', { message: 'Unauthorized access to this contract' });
           return;
         }
@@ -94,17 +109,22 @@ const setupSocketServer = (io) => {
         const roomName = `contract:${contractId}`;
         socket.join(roomName);
         
-        console.log(`${socket.user.Name} joined chat room: ${roomName}`);
+        console.log(`${socket.user.Name} joined chat room: ${roomName} (Socket ID: ${socketId})`);
+        
+        // Get room members
+        const sockets = await io.in(roomName).fetchSockets();
+        console.log(`Room ${roomName} has ${sockets.length} members`);
         
         // Notify user that they joined successfully
         socket.emit('joined_chat', { 
           contractId, 
-          message: 'Successfully joined chat'
+          message: 'Successfully joined chat',
+          members: sockets.length
         });
         
         try {
           // Mark messages as read when joining chat
-          await Message.updateMany(
+          const updateResult = await Message.updateMany(
             { 
               contractId, 
               recipientId: socket.user._id,
@@ -114,6 +134,8 @@ const setupSocketServer = (io) => {
               read: true 
             }
           );
+          
+          console.log(`Marked ${updateResult.modifiedCount} messages as read`);
           
           // Notify other users in the room that this user has read messages
           socket.to(roomName).emit('messages_read', {
@@ -136,12 +158,21 @@ const setupSocketServer = (io) => {
       
       const roomName = `contract:${contractId}`;
       socket.leave(roomName);
-      console.log(`${socket.user.Name} left chat room: ${roomName}`);
+      console.log(`${socket.user?.Name || 'User'} left chat room: ${roomName}`);
+      
+      // Acknowledge
+      socket.emit('left_chat', { 
+        contractId, 
+        success: true 
+      });
     });
     
-    // Send message
+    // Handle send message event with more debug
     socket.on('send_message', async ({ contractId, message }) => {
       try {
+        console.log(`Send message request: User ${socket.user?.Name} for contract ${contractId}`);
+        console.log('Message content:', message.content?.substring(0, 30) + (message.content?.length > 30 ? '...' : ''));
+        
         if (!contractId || !message) {
           socket.emit('error', { message: 'Contract ID and message are required' });
           return;
@@ -151,6 +182,7 @@ const setupSocketServer = (io) => {
         const contract = await Contract.findById(contractId);
         
         if (!contract) {
+          console.log(`Contract not found: ${contractId}`);
           socket.emit('error', { message: 'Contract not found' });
           return;
         }
@@ -161,55 +193,87 @@ const setupSocketServer = (io) => {
         const buyerId = contract.buyer?.toString();
         
         if (userId !== farmerId && userId !== buyerId) {
+          console.log(`Unauthorized access: User ${userId} not part of contract ${contractId}`);
           socket.emit('error', { message: 'Unauthorized access to this contract' });
           return;
         }
         
-        // Determine recipient ID
+        // Determine recipient
         const recipientId = userId === farmerId ? buyerId : farmerId;
         
-        try {
-          // Create message in database
-          const newMessage = await Message.create({
-            contractId,
-            senderId: userId,
-            recipientId,
-            messageType: message.messageType || 'text',
-            content: message.content,
-            ...(message.offerDetails && { offerDetails: message.offerDetails }),
-            read: false
-          });
+        // Create message
+        const newMessage = {
+          contractId,
+          senderId: userId,
+          recipientId,
+          messageType: message.messageType || 'text',
+          content: message.content,
+          read: false
+        };
+        
+        // Add offer details if this is a counter offer
+        if (message.messageType === 'counterOffer' && message.offerDetails) {
+          newMessage.offerDetails = message.offerDetails;
           
-          // Populate sender details
-          const populatedMessage = await Message.findById(newMessage._id).populate('senderId', 'Name photo accountType');
-          
-          // Emit message to all users in the room
-          const roomName = `contract:${contractId}`;
-          io.to(roomName).emit('new_message', populatedMessage);
-          
-          // Also emit to user's personal room (for unread count updates when not in chat)
-          io.to(`user:${recipientId}`).emit('unread_update', {
-            contractId,
-            message: populatedMessage
-          });
-          
-          // Update contract status if counter offer
-          if (message.messageType === 'counterOffer' && contract.status !== 'negotiating') {
+          // Update contract status to negotiating
+          if (contract.status === 'requested') {
             contract.status = 'negotiating';
             await contract.save();
             
-            // Notify about contract status change
-            io.to(roomName).emit('contract_updated', {
+            // Notify about contract status update
+            io.to(`contract:${contractId}`).emit('contract_updated', {
               contractId,
               status: 'negotiating'
             });
           }
-        } catch (dbError) {
-          console.error('Database error when sending message:', dbError);
-          socket.emit('error', { message: 'Failed to save message: ' + dbError.message });
+          
+          // Add to negotiation history
+          contract.negotiationHistory.push({
+            proposedBy: userId,
+            proposedChanges: message.offerDetails,
+            message: message.content,
+            proposedAt: new Date()
+          });
+          
+          await contract.save();
         }
+        
+        // Save message to database
+        const createdMessage = await Message.create(newMessage);
+        console.log(`Message saved to database with ID: ${createdMessage._id}`);
+        
+        // Populate the sender details for the frontend
+        const populatedMessage = await Message.findById(createdMessage._id)
+          .populate('senderId', 'Name photo accountType');
+        
+        // Get room members before emitting
+        const roomName = `contract:${contractId}`;
+        const sockets = await io.in(roomName).fetchSockets();
+        console.log(`Emitting message to room ${roomName} with ${sockets.length} members`);
+        
+        // Emit to all users in the contract room
+        io.to(roomName).emit('new_message', populatedMessage);
+        
+        // Also broadcast to recipient's personal room
+        io.to(`user:${recipientId}`).emit('new_notification', {
+          type: 'new_message',
+          message: `New message from ${socket.user.Name}`,
+          data: {
+            contractId,
+            senderId: userId
+          }
+        });
+        
+        // Acknowledge successful message sending
+        socket.emit('message_sent', {
+          success: true,
+          messageId: populatedMessage._id
+        });
+        
+        console.log(`Message sent from ${socket.user.Name} to room ${roomName}`);
+        
       } catch (error) {
-        console.error('Error sending message:', error);
+        console.error('Error sending message via socket:', error);
         socket.emit('error', { message: 'Failed to send message: ' + error.message });
       }
     });

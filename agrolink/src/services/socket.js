@@ -14,7 +14,14 @@ class SocketService {
   // Initialize socket connection
   init(token) {
     if (this.socket) {
-      console.log('Socket already initialized');
+      // If socket exists but is not connected, try reconnecting
+      if (!this.socket.connected) {
+        console.log('Socket exists but not connected, reconnecting...');
+        this.reconnect();
+      } else {
+        console.log('Socket already initialized and connected');
+      }
+      this.isConnected = this.socket.connected;
       return this.socket;
     }
 
@@ -34,16 +41,21 @@ class SocketService {
         reconnectionAttempts: 10,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        timeout: 20000
+        timeout: 20000,
+        forceNew: true
       });
 
       // Connection event handlers
       this.socket.on('connect', () => {
-        console.log('Socket connected!');
+        console.log('Socket connected successfully!');
         this.isConnected = true;
         this.reconnectAttempts = 0;
         // Let the UI know we're connected
         this.broadcastEvent('connection_status', { connected: true });
+        toast.success('Chat connection established', { 
+          id: 'socket-connected',
+          duration: 2000
+        });
       });
 
       this.socket.on('connect_error', (error) => {
@@ -59,11 +71,15 @@ class SocketService {
         
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
           console.error('Max reconnection attempts reached');
-          toast.error('Could not connect to chat server. Please refresh the page.');
+          toast.error('Could not connect to chat server. Please refresh the page.', {
+            id: 'socket-error-max-attempts'
+          });
           this.disconnect();
         } else if (this.reconnectAttempts > 3) {
           // Only show toast after multiple failures to avoid spamming
-          toast.error('Chat server connection issues. Trying to reconnect...');
+          toast.error('Chat server connection issues. Trying to reconnect...', {
+            id: 'socket-reconnecting'
+          });
         }
       });
 
@@ -80,7 +96,9 @@ class SocketService {
         } else if (reason === 'transport close' || reason === 'ping timeout') {
           // Network issue, try reconnecting
           setTimeout(() => this.reconnect(), 1000);
-          toast.error('Lost connection to chat server. Reconnecting...');
+          toast.error('Lost connection to chat server. Reconnecting...', {
+            id: 'socket-disconnected'
+          });
         }
       });
 
@@ -127,38 +145,64 @@ class SocketService {
   // Disconnect socket
   disconnect() {
     if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-      this.isConnected = false;
-      this.listeners.clear();
+      try {
+        console.log('Disconnecting socket');
+        this.socket.disconnect();
+        this.isConnected = false;
+      } catch (error) {
+        console.error('Error disconnecting socket:', error);
+      }
     }
   }
 
   // Reconnect socket
   reconnect() {
     if (this.socket) {
+      console.log('Attempting to reconnect socket...');
       this.socket.connect();
+    } else {
+      // No existing socket, reinitialize
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('Reinitializing socket connection...');
+        this.init(token);
+      } else {
+        console.error('Cannot reconnect: No authentication token available');
+      }
     }
   }
 
-  // Join a chat room (contract)
+  // Join a chat room
   joinChat(contractId) {
-    if (!this.isConnected) {
-      console.warn('Socket not connected. Cannot join chat.');
+    if (!this.isConnected || !this.socket) {
+      console.warn('Socket not connected. Cannot join chat room');
       return false;
     }
-
-    this.socket.emit('join_chat', { contractId });
-    return true;
+    
+    try {
+      console.log(`Joining chat room for contract: ${contractId}`);
+      this.socket.emit('join_chat', { contractId });
+      return true;
+    } catch (error) {
+      console.error('Error joining chat room:', error);
+      return false;
+    }
   }
 
   // Leave a chat room
   leaveChat(contractId) {
-    if (!this.isConnected) {
-      return;
+    if (!this.isConnected || !this.socket) {
+      return false;
     }
-
-    this.socket.emit('leave_chat', { contractId });
+    
+    try {
+      console.log(`Leaving chat room for contract: ${contractId}`);
+      this.socket.emit('leave_chat', { contractId });
+      return true;
+    } catch (error) {
+      console.error('Error leaving chat room:', error);
+      return false;
+    }
   }
 
   // Send a message
@@ -186,32 +230,32 @@ class SocketService {
     this.socket.emit('mark_messages_read', { contractId });
   }
 
-  // Subscribe to events
+  // Subscribe to an event
   on(event, callback) {
     if (!this.socket) {
-      console.warn('Socket not initialized. Cannot subscribe to events.');
-      return () => {};
+      console.warn(`Socket not initialized. Cannot subscribe to ${event}`);
+      return () => {}; // Return empty unsubscribe function
     }
-
+    
+    // Add event listener
     this.socket.on(event, callback);
-    this.listeners.set(event, callback);
     
     // Return unsubscribe function
-    return () => this.off(event, callback);
-  }
-
-  // Unsubscribe from events
-  off(event, callback) {
-    if (!this.socket) {
-      return;
-    }
-
-    this.socket.off(event, callback);
-    this.listeners.delete(event);
+    return () => {
+      try {
+        this.socket.off(event, callback);
+      } catch (error) {
+        console.error(`Error unsubscribing from ${event}:`, error);
+      }
+    };
   }
 
   // Check if socket is connected
   isSocketConnected() {
+    // Check both our tracked state and actual socket connection
+    if (this.socket) {
+      this.isConnected = this.socket.connected;
+    }
     return this.isConnected;
   }
 }

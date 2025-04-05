@@ -1160,7 +1160,7 @@ const ContractDetail = () => {
           <div className="flex flex-wrap gap-3">
             <button
               className="px-5 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center shadow-sm"
-              onClick={() => navigate(`/messages?contractId=${contract._id}`)}
+              onClick={() => navigate(`/chat/${contract._id}`)}
               aria-label="Contact the farmer about this contract"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
