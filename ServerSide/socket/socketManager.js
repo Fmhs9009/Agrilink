@@ -224,30 +224,62 @@ const setupSocketServer = (io) => {
         };
         
         // Add offer details if this is a counter offer
-        if (message.messageType === 'counterOffer' && message.offerDetails) {
-          newMessage.offerDetails = message.offerDetails;
-          
-          // Update contract status to negotiating
-          if (contract.status === 'requested') {
-            contract.status = 'negotiating';
-            await contract.save();
+        if (message.messageType === 'counterOffer') {
+          // Support both old format (offerDetails) and new format (offer)
+          if (message.offer) {
+            newMessage.offer = message.offer;
             
-            // Notify about contract status update
-            io.to(`contract:${contractId}`).emit('contract_updated', {
-              contractId,
-              status: 'negotiating'
+            // Update contract status to negotiating
+            if (contract.status === 'requested') {
+              contract.status = 'negotiating';
+              await contract.save();
+              
+              // Notify about contract status update
+              io.to(`contract:${contractId}`).emit('contract_updated', {
+                contractId,
+                status: 'negotiating'
+              });
+            }
+            
+            // Add to negotiation history
+            contract.negotiationHistory.push({
+              proposedBy: userId,
+              proposedChanges: message.offer,
+              message: message.content,
+              proposedAt: new Date()
             });
+            
+            await contract.save();
+          } 
+          else if (message.offerDetails) {
+            newMessage.offerDetails = message.offerDetails;
+            
+            // Update contract status to negotiating
+            if (contract.status === 'requested') {
+              contract.status = 'negotiating';
+              await contract.save();
+              
+              // Notify about contract status update
+              io.to(`contract:${contractId}`).emit('contract_updated', {
+                contractId,
+                status: 'negotiating'
+              });
+            }
+            
+            // Add to negotiation history
+            contract.negotiationHistory.push({
+              proposedBy: userId,
+              proposedChanges: message.offerDetails,
+              message: message.content,
+              proposedAt: new Date()
+            });
+            
+            await contract.save();
           }
-          
-          // Add to negotiation history
-          contract.negotiationHistory.push({
-            proposedBy: userId,
-            proposedChanges: message.offerDetails,
-            message: message.content,
-            proposedAt: new Date()
-          });
-          
-          await contract.save();
+          else {
+            socket.emit('error', { message: 'Counter offer must include offer details' });
+            return;
+          }
         }
         
         // Save message to database
@@ -279,7 +311,8 @@ const setupSocketServer = (io) => {
         // Acknowledge successful message sending
         socket.emit('message_sent', {
           success: true,
-          messageId: populatedMessage._id
+          messageId: populatedMessage._id,
+          clientMessageId: message.clientMessageId || null
         });
         
         console.log(`Message sent from ${socket.user.Name} to room ${roomName}`);

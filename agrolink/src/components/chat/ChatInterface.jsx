@@ -121,6 +121,22 @@ const ChatInterface = () => {
               }
             }
             
+            // Check for temporary counter offer messages
+            if (message.messageType === 'counterOffer') {
+              const tempIndex = prev.findIndex(m => 
+                m.isTemp && 
+                m.messageType === 'counterOffer' && 
+                m.senderId._id === message.senderId._id
+              );
+              
+              if (tempIndex >= 0) {
+                // Replace temp counter offer with real one
+                const newMessages = [...prev];
+                newMessages[tempIndex] = message;
+                return newMessages;
+              }
+            }
+            
             // Otherwise add as new message
             return [...prev, message];
           });
@@ -593,6 +609,9 @@ const ChatInterface = () => {
         return;
       }
       
+      // Generate a unique client message ID for tracking
+      const clientMessageId = `client-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      
       // Create a temporary message for UI feedback
       const tempId = 'temp-offer-' + Date.now();
       const tempOfferMessage = {
@@ -606,7 +625,7 @@ const ChatInterface = () => {
         recipientId: otherParty?._id,
         messageType: 'counterOffer',
         content: `I'm proposing new terms for our contract.`,
-        offerDetails: {
+        offer: {
           pricePerUnit: parseFloat(offerFormData.pricePerUnit),
           quantity: parseInt(offerFormData.quantity),
           deliveryDate: new Date(offerFormData.deliveryDate).toISOString(),
@@ -614,7 +633,8 @@ const ChatInterface = () => {
           specialRequirements: offerFormData.specialRequirements
         },
         createdAt: new Date().toISOString(),
-        isTemp: true
+        isTemp: true,
+        status: 'sending'
       };
       
       // Add temp offer to UI immediately
@@ -632,7 +652,8 @@ const ChatInterface = () => {
       const offerMessage = {
         content: `I'm proposing new terms for our contract.`,
         messageType: 'counterOffer',
-        offerDetails: {
+        clientMessageId,
+        offer: {
           pricePerUnit: parseFloat(offerFormData.pricePerUnit),
           quantity: parseInt(offerFormData.quantity),
           deliveryDate: new Date(offerFormData.deliveryDate).toISOString(),
@@ -846,7 +867,60 @@ const ChatInterface = () => {
                 {!isCurrentUser && contract?.status === 'negotiating' && (
                   <div className="mt-2 pt-2 border-t border-opacity-20 border-gray-200 flex justify-between">
                     <button 
-                      onClick={() => handleAcceptOffer(message._id)}
+                      onClick={() => handleAcceptOffer()}
+                      className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 flex items-center"
+                      disabled={sendingMessage}
+                    >
+                      {sendingMessage ? <FaSpinner className="animate-spin mr-1" /> : <FaCheck className="mr-1" />}
+                      Accept
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setOfferFormData({
+                          pricePerUnit: message.offer.pricePerUnit || '',
+                          quantity: message.offer.quantity || '',
+                          deliveryDate: message.offer.deliveryDate ? new Date(message.offer.deliveryDate).toISOString().split('T')[0] : '',
+                          qualityRequirements: message.offer.qualityRequirements || '',
+                          specialRequirements: message.offer.specialRequirements || ''
+                        });
+                        setShowOfferForm(true);
+                      }}
+                      className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center"
+                    >
+                      <FaHandshake className="mr-1" /> Counter
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Special display for counter offer messages */}
+            {message.messageType === 'counterOffer' && message.offer && (
+              <div className="mt-2 pt-2 border-t border-opacity-20 border-gray-200 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Price:</span>
+                    <span className="ml-1 font-medium">₹{message.offer.pricePerUnit || 0}</span>
+                  </div>
+                  <div>
+                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Quantity:</span>
+                    <span className="ml-1 font-medium">{(message.offer.quantity || 0)} {contract?.unit || 'units'}</span>
+                  </div>
+                  <div>
+                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Delivery:</span>
+                    <span className="ml-1 font-medium">{message.offer.deliveryDate ? new Date(message.offer.deliveryDate).toLocaleDateString() : 'Not specified'}</span>
+                  </div>
+                  <div>
+                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Total:</span>
+                    <span className="ml-1 font-medium">₹{(parseFloat(message.offer.pricePerUnit || 0) * parseFloat(message.offer.quantity || 0)).toFixed(2)}</span>
+                  </div>
+                </div>
+                
+                {/* Offer response buttons for other party */}
+                {!isCurrentUser && contract?.status === 'negotiating' && (
+                  <div className="mt-2 pt-2 border-t border-opacity-20 border-gray-200 flex justify-between">
+                    <button 
+                      onClick={() => handleAcceptOffer()}
                       className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 flex items-center"
                       disabled={sendingMessage}
                     >

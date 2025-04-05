@@ -7,15 +7,16 @@ class SocketService {
   constructor() {
     this.socket = null;
     this.isConnected = false;
-    this.pendingMessages = [];
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
-    this.connectionCheckInterval = null;
-    this.heartbeatInterval = null;
-    this.listeners = {};
-    this.rooms = new Set();
     this.token = null;
     this.DEBUG = true; // For detailed logging
+    this.messageTimeouts = {};
+    this.pendingMessages = {};
+    this.activeRooms = {};
+    this.eventListeners = {};
+    this.reconnectAttempts = 0;
+    this.connectionCheckInterval = null;
+    this.heartbeatInterval = null;
+    this.rooms = new Set();
   }
 
   log(...args) {
@@ -165,22 +166,71 @@ class SocketService {
     
     this.socket.on('message_sent', (data) => {
       this.log('✅ Message sent confirmation:', data);
+      
+      // Check for a client message ID (for mapping to pending messages)
+      let clientMessageId = null;
+      
+      // First check if we have a direct client message ID
+      if (data.clientMessageId) {
+        clientMessageId = data.clientMessageId;
+      } 
+      // If not, look through pending messages to find a match by server message ID
+      else if (data.messageId) {
+        // Find the pending message that corresponds to this server message
+        const pendingMessageEntry = Object.entries(this.pendingMessages).find(
+          ([_, value]) => value.tempMessageId === data.messageId
+        );
+        
+        if (pendingMessageEntry) {
+          [clientMessageId] = pendingMessageEntry;
+        }
+      }
+      
+      // If we found the corresponding message, clear it from pending
+      if (clientMessageId && this.pendingMessages[clientMessageId]) {
+        this.log('✅ Clearing pending message:', clientMessageId);
+        
+        // Clear any timeouts for this message
+        if (this.messageTimeouts[clientMessageId]) {
+          clearTimeout(this.messageTimeouts[clientMessageId]);
+          delete this.messageTimeouts[clientMessageId];
+        }
+        
+        // Remove from pending messages
+        delete this.pendingMessages[clientMessageId];
+      }
+      
+      // Trigger event for UI updates
       this.triggerEvent('message_sent', data);
     });
     
+    this.socket.on('connection_status', (status) => {
+      this.log('🔌 Connection status update from server:', status);
+      this.isConnected = status.connected;
+      
+      // Trigger internal connection status event
+      this.triggerEvent('__internal__connection_status', status);
+    });
+    
+    this.socket.on('joined_chat', (data) => {
+      this.log('🚪 Joined chat room:', data);
+      
+      // Add room to active rooms list
+      if (data.contractId) {
+        this.activeRooms[data.contractId] = true;
+      }
+      
+      this.triggerEvent('joined_chat', data);
+    });
+    
     this.socket.on('messages_read', (data) => {
-      this.log('👁️ Messages marked as read:', data);
+      this.log('👁️ Messages read notification:', data);
       this.triggerEvent('messages_read', data);
     });
     
     this.socket.on('contract_updated', (data) => {
-      this.log('📄 Contract updated:', data);
+      this.log('📋 Contract updated notification:', data);
       this.triggerEvent('contract_updated', data);
-    });
-    
-    this.socket.on('offer_accepted', (data) => {
-      this.log('🤝 Offer accepted:', data);
-      this.triggerEvent('offer_accepted', data);
     });
   }
   
@@ -261,24 +311,24 @@ class SocketService {
   
   // Register event listener
   on(event, callback) {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
+    if (!this.eventListeners[event]) {
+      this.eventListeners[event] = [];
     }
     
-    this.listeners[event].push(callback);
+    this.eventListeners[event].push(callback);
     
     // Return unsubscribe function
     return () => {
-      if (this.listeners[event]) {
-        this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+      if (this.eventListeners[event]) {
+        this.eventListeners[event] = this.eventListeners[event].filter(cb => cb !== callback);
       }
     };
   }
   
   // Trigger event for all listeners
   triggerEvent(event, data) {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => {
+    if (this.eventListeners[event]) {
+      this.eventListeners[event].forEach(callback => {
         try {
           callback(data);
         } catch (error) {
@@ -320,79 +370,75 @@ class SocketService {
     return true;
   }
   
-  // Send a message
+  // Send a message via socket
   sendMessage(contractId, message) {
-    // Generate unique client ID for this message
-    const clientMessageId = `client-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-    const messageWithId = { ...message, clientMessageId };
-    
-    this.log('📤 Sending message:', { contractId, message: messageWithId });
-    
-    // If not connected, queue it
     if (!this.isSocketConnected()) {
-      this.log('⚠️ Socket not connected, adding to pending queue');
-      this.addPendingMessage(contractId, messageWithId);
-      
-      // Try reconnecting
-      this.reconnect();
+      this.log('⚠️ Cannot send message - not connected');
       return false;
     }
     
-    // Try to send the message
     try {
-      this.socket.emit('send_message', {
+      // Generate a unique client message ID if one isn't provided
+      if (!message.clientMessageId) {
+        message.clientMessageId = `client-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      }
+      
+      this.log('📤 Sending message to contract:', contractId);
+      
+      // Add message to pending messages registry
+      this.pendingMessages[message.clientMessageId] = {
         contractId,
-        message: messageWithId
+        message,
+        sentAt: Date.now(),
+        attempts: 1
+      };
+      
+      // Set up timeout for message uncertainty
+      const uncertaintyTimeout = setTimeout(() => {
+        // If message is still pending after timeout
+        if (this.pendingMessages[message.clientMessageId]) {
+          this.log('⚠️ No acknowledgement received for message:', message.clientMessageId);
+          
+          // Emit uncertainty event for UI updates
+          this.triggerEvent('message_uncertainty', {
+            clientMessageId: message.clientMessageId,
+            contractId,
+            message
+          });
+          
+          // Keep message in pending - will be retried on reconnection
+        }
+      }, 8000);
+      
+      // Store the uncertainty timeout reference
+      this.messageTimeouts[message.clientMessageId] = uncertaintyTimeout;
+      
+      // Send the message through socket
+      this.socket.emit('send_message', { 
+        contractId, 
+        message
       });
       
-      // Set a timeout for message acknowledgement
-      setTimeout(() => {
-        // Check if we got an acknowledgement
-        const hasAck = this._messageAcks && this._messageAcks[clientMessageId];
-        
-        if (!hasAck) {
-          this.log('⚠️ No acknowledgement received for message:', clientMessageId);
-          
-          // Notify UI about delivery uncertainty
-          this.triggerEvent('message_uncertainty', {
-            clientMessageId,
-            contractId,
-            message: messageWithId
-          });
-        }
-      }, 5000);
-      
+      // Message was sent successfully (but not yet confirmed by server)
       return true;
     } catch (error) {
       this.log('❌ Error sending message:', error);
-      this.addPendingMessage(contractId, messageWithId);
       return false;
     }
-  }
-  
-  // Add message to pending queue
-  addPendingMessage(contractId, message) {
-    this.pendingMessages.push({
-      contractId,
-      message,
-      timestamp: Date.now()
-    });
-    
-    this.log('📩 Added message to pending queue. Queue size:', this.pendingMessages.length);
   }
   
   // Process pending messages
   processPendingMessages() {
-    if (this.pendingMessages.length === 0) return;
+    if (Object.keys(this.pendingMessages).length === 0) return;
     
-    this.log('📩 Processing pending messages:', this.pendingMessages.length);
+    this.log('📩 Processing pending messages:', Object.keys(this.pendingMessages).length);
     
     // Process oldest messages first
-    const messages = [...this.pendingMessages].sort((a, b) => a.timestamp - b.timestamp);
-    this.pendingMessages = [];
+    const messages = Object.entries(this.pendingMessages).sort((a, b) => a[1].timestamp - b[1].timestamp);
+    this.pendingMessages = {};
     
     // Send each message
-    messages.forEach(({ contractId, message }) => {
+    messages.forEach(([clientMessageId, { contractId, message }]) => {
       this.log('📤 Sending pending message for contract:', contractId);
       this.sendMessage(contractId, message);
     });

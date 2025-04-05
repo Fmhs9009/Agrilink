@@ -44,19 +44,50 @@ const messageSchema = new mongoose.Schema({
         pricePerUnit: {
             type: Number,
             required: function() {
-                return this.messageType === 'counterOffer';
+                return this.messageType === 'counterOffer' && !this.offer;
             }
         },
         quantity: {
             type: Number,
             required: function() {
-                return this.messageType === 'counterOffer';
+                return this.messageType === 'counterOffer' && !this.offer;
             }
         },
         deliveryDate: {
             type: Date,
             required: function() {
-                return this.messageType === 'counterOffer';
+                return this.messageType === 'counterOffer' && !this.offer;
+            }
+        },
+        qualityRequirements: {
+            type: String
+        },
+        specialRequirements: {
+            type: String
+        },
+        paymentTerms: {
+            type: Object
+        }
+    },
+    
+    // New field for counter offer details (for backwards compatibility)
+    offer: {
+        pricePerUnit: {
+            type: Number,
+            required: function() {
+                return this.messageType === 'counterOffer' && !this.offerDetails;
+            }
+        },
+        quantity: {
+            type: Number,
+            required: function() {
+                return this.messageType === 'counterOffer' && !this.offerDetails;
+            }
+        },
+        deliveryDate: {
+            type: Date,
+            required: function() {
+                return this.messageType === 'counterOffer' && !this.offerDetails;
             }
         },
         qualityRequirements: {
