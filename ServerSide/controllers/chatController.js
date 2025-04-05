@@ -65,77 +65,70 @@ exports.getMessages = catchAsyncErrors(async (req, res, next) => {
     }
 });
 
-// Send a new message
+// Send a message
 exports.sendMessage = catchAsyncErrors(async (req, res, next) => {
-    const { contractId } = req.params;
-    const { content, messageType = 'text', offerDetails } = req.body;
-    
-    // Validate message data
-    if (messageType === 'text' && !content) {
-        return next(new ErrorHandler('Message content is required', 400));
-    }
-    
-    if (messageType === 'counterOffer' && !offerDetails) {
-        return next(new ErrorHandler('Offer details are required for counter offers', 400));
-    }
-    
-    // Verify contract exists and user has access
-    const contract = await Contract.findById(contractId);
-    if (!contract) {
-        return next(new ErrorHandler('Contract not found', 404));
-    }
-    
-    // Determine if user is farmer or buyer and set recipient accordingly
-    const isFarmer = contract.farmer.toString() === req.user._id.toString();
-    const isBuyer = contract.buyer.toString() === req.user._id.toString();
-    
-    if (!isFarmer && !isBuyer) {
-        return next(new ErrorHandler('Unauthorized access to this contract', 403));
-    }
-    
-    const recipientId = isFarmer ? contract.buyer : contract.farmer;
-    
-    // Create the message
-    const message = await Message.create({
-        contractId,
-        senderId: req.user._id,
-        recipientId,
-        messageType,
-        content,
-        offerDetails,
-        read: false,
-        createdAt: new Date()
-    });
-    
-    // If it's a counter offer, update contract status and add to negotiation history
-    if (messageType === 'counterOffer') {
-        // Create negotiation history entry
-        const negotiationEntry = {
-            proposedBy: req.user._id,
-            proposedChanges: offerDetails,
-            message: content || 'New counter offer',
-            proposedAt: new Date()
-        };
+    try {
+        const { contractId } = req.params;
+        const userId = req.user._id;
+        const { content, messageType, offerDetails } = req.body;
         
-        // Update contract with new negotiation history and set status to negotiating
-        await Contract.findByIdAndUpdate(
+        // Validate contract existence
+        const contract = await Contract.findById(contractId);
+        if (!contract) {
+            return next(new ErrorHandler('Contract not found', 404));
+        }
+        
+        // Check if user has access to this contract
+        const farmerId = contract.farmer.toString();
+        const buyerId = contract.buyer.toString();
+        
+        if (userId.toString() !== farmerId && userId.toString() !== buyerId) {
+            return next(new ErrorHandler('You do not have access to this contract', 403));
+        }
+        
+        // Determine recipient
+        const recipientId = userId.toString() === farmerId ? buyerId : farmerId;
+        
+        // Create message
+        const newMessage = await Message.create({
             contractId,
-            { 
-                $push: { negotiationHistory: negotiationEntry },
-                status: 'negotiating'
+            senderId: userId,
+            recipientId,
+            messageType: messageType || 'text',
+            content,
+            ...(offerDetails && { offerDetails }),
+            read: false
+        });
+        
+        // If this is a counter offer, update contract status and add to negotiation history
+        if (messageType === 'counterOffer' && offerDetails) {
+            // Update contract status to negotiating if not already
+            if (contract.status !== 'negotiating') {
+                contract.status = 'negotiating';
             }
-        );
+            
+            // Add to negotiation history
+            contract.negotiationHistory.push({
+                proposedBy: userId,
+                proposedChanges: offerDetails,
+                message: content,
+                proposedAt: new Date()
+            });
+            
+            await contract.save();
+        }
+        
+        // Populate sender details
+        const populatedMessage = await Message.findById(newMessage._id)
+            .populate('senderId', 'Name photo accountType');
+        
+        res.status(201).json({
+            success: true,
+            message: populatedMessage
+        });
+    } catch (error) {
+        return next(new ErrorHandler(error.message, 500));
     }
-    
-    // Fetch the populated message to return
-    const populatedMessage = await Message.findById(message._id)
-        .populate('senderId', 'Name accountType image')
-        .lean();
-    
-    res.status(201).json({
-        success: true,
-        message: populatedMessage
-    });
 });
 
 // Get unread message count

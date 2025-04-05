@@ -46,209 +46,164 @@ const ChatInterface = () => {
   
   // Initialize socket connection
   useEffect(() => {
-    let socketInitialized = false;
-    
-    const setupSocket = async () => {
+    const setupChat = async () => {
+      setLoading(true);
+      
       try {
+        // 1. Get authentication token
         const token = authService.getToken();
-        
-        if (token && !socketService.isSocketConnected()) {
-          console.log("Initializing socket connection...");
-          await socketService.init(token);
-          socketInitialized = true;
-        } else if (socketService.isSocketConnected()) {
-          console.log("Socket already connected");
-          socketInitialized = true;
+        if (!token) {
+          throw new Error('No authentication token found');
         }
         
-        // Set state based on actual connection status
+        // 2. Initialize socket if needed
+        let socketInitialized = false;
+        try {
+          if (!socketService.isSocketConnected()) {
+            console.log('🔌 Initializing socket connection');
+            const socket = await socketService.init(token);
+            socketInitialized = socket !== null;
+          } else {
+            socketInitialized = true;
+          }
+        } catch (socketError) {
+          console.error('Failed to initialize socket:', socketError);
+          // Continue anyway - we'll use REST API as fallback
+        }
+        
+        // 3. Join the chat room for this contract (if socket is working)
+        if (socketInitialized && socketService.isSocketConnected()) {
+          console.log('🚪 Joining chat room for contract:', contractId);
+          socketService.joinChat(contractId);
+        }
+        
+        // 4. Set up connection status listener
+        const connectionStatusUnsubscribe = socketService.on('connection_status', (status) => {
+          console.log('🔌 Connection status changed:', status);
+          setSocketConnected(status.connected);
+          
+          // If reconnected and there were connection issues, refresh messages
+          if (status.connected && connectionIssue) {
+            console.log('🔄 Reconnected after connection issues, refreshing messages');
+            refreshMessages();
+            setConnectionIssue(false);
+          } else if (!status.connected) {
+            setConnectionIssue(true);
+          }
+        });
+        
+        // 5. Set up message listeners even if socket isn't connected (for future reconnection)
+        const newMessageUnsubscribe = socketService.on('new_message', (message) => {
+          console.log('📩 New message received:', message);
+          
+          // Only handle messages for this contract
+          if (message.contractId !== contractId) return;
+          
+          // Add message to state (avoiding duplicates)
+          setMessages(prev => {
+            // Check if message already exists
+            const exists = prev.some(m => m._id === message._id);
+            if (exists) return prev;
+            
+            // Check if there's a temporary message to replace
+            if (message.messageType === 'text') {
+              const tempIndex = prev.findIndex(m => 
+                m.isTemp && 
+                m.content === message.content && 
+                m.senderId._id === message.senderId._id
+              );
+              
+              if (tempIndex >= 0) {
+                // Replace temp message with real one
+                const newMessages = [...prev];
+                newMessages[tempIndex] = message;
+                return newMessages;
+              }
+            }
+            
+            // Otherwise add as new message
+            return [...prev, message];
+          });
+          
+          // Auto scroll to bottom
+          setTimeout(() => {
+            if (messagesEndRef.current) {
+              messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+            }
+          }, 100);
+        });
+        
+        // 6. Set up message sent confirmation listener
+        const messageSentUnsubscribe = socketService.on('message_sent', (data) => {
+          console.log('✅ Message sent confirmation:', data);
+          
+          if (data.success) {
+            // Update sending status
+            setSendingMessage(false);
+            
+            // Update any temp messages with confirmed ID
+            if (data.messageId) {
+              setMessages(prev => 
+                prev.map(msg => {
+                  if (msg.isTemp) {
+                    return {
+                      ...msg,
+                      _id: data.messageId,
+                      isTemp: false,
+                      status: 'delivered'
+                    };
+                  }
+                  return msg;
+                })
+              );
+            }
+          }
+        });
+        
+        // 7. Set up message uncertainty listener (when delivery is uncertain)
+        const messageUncertaintyUnsubscribe = socketService.on('message_uncertainty', (data) => {
+          console.log('⚠️ Message delivery uncertain:', data);
+          
+          // Find and update the temporary message
+          setMessages(prev => 
+            prev.map(msg => {
+              if (msg.isTemp && msg.content === data.message.content) {
+                return {
+                  ...msg,
+                  status: 'uncertain'
+                };
+              }
+              return msg;
+            })
+          );
+        });
+        
+        // 8. Set initial connection status based on current socket state
         setSocketConnected(socketService.isSocketConnected());
         
-        // Check connection status periodically
-        const checkConnection = setInterval(() => {
-          const isConnected = socketService.isSocketConnected();
-          setSocketConnected(isConnected);
-          
-          if (!isConnected && socketInitialized) {
-            console.log("Connection lost, attempting to reconnect...");
-            socketService.reconnect();
-          }
-        }, 3000);
-        
+        // 9. Clean up function
         return () => {
-          clearInterval(checkConnection);
+          console.log('🧹 Cleaning up chat interface');
+          connectionStatusUnsubscribe();
+          newMessageUnsubscribe();
+          messageSentUnsubscribe();
+          messageUncertaintyUnsubscribe();
+          socketService.leaveChat(contractId);
         };
+        
       } catch (error) {
-        console.error("Socket initialization error:", error);
-        setSocketConnected(false);
+        console.error('❌ Error setting up chat:', error);
+        toast.error('Chat connection issues detected. Falling back to basic mode.');
+        setError('Chat connection issues detected');
+        setConnectionIssue(true);
+        // Continue to load the chat even with errors - will use REST API
+      } finally {
+        setLoading(false);
       }
     };
     
-    const cleanup = setupSocket();
-    
-    return () => {
-      // Clean up socket event listeners and connection checker
-      if (socketService.isSocketConnected()) {
-        socketService.leaveChat(contractId);
-      }
-      if (cleanup && typeof cleanup === 'function') {
-        cleanup();
-      }
-    };
-  }, [contractId]);
-  
-  // Socket event listeners
-  useEffect(() => {
-    if (!socketService.getSocket()) {
-      console.log("No socket available, skipping event listeners");
-      return;
-    }
-    
-    console.log("Setting up socket event listeners");
-    
-    // Join the chat room
-    socketService.joinChat(contractId);
-    
-    // Listen for message sent acknowledgement
-    const messageSentUnsub = socketService.on('message_sent', (data) => {
-      if (data && data.success) {
-        console.log('Message sent acknowledgement received:', data);
-        // Ensure spinner stops on any message_sent event
-        setSendingMessage(false);
-      }
-    });
-    
-    // Listen for new messages with correct handler
-    const newMessageUnsub = socketService.on('new_message', (newMessage) => {
-      if (newMessage && newMessage.contractId === contractId) {
-        console.log('New message received via socket:', newMessage);
-        
-        // Check if this is replacing a temporary message
-        setMessages(prev => {
-          // If message already exists (by ID), don't add it again
-          const messageExists = prev.some(msg => msg._id === newMessage._id);
-          if (messageExists) {
-            return prev;
-          }
-          
-          // For system messages (like acceptance), match on content and type
-          if (newMessage.messageType === 'systemMessage') {
-            const tempIndex = prev.findIndex(msg => 
-              msg.isTemp && 
-              msg.messageType === 'systemMessage' &&
-              msg.content.includes('accepted the contract offer')
-            );
-            
-            if (tempIndex >= 0) {
-              // Replace temp message with real one
-              const newMessages = [...prev];
-              newMessages[tempIndex] = newMessage;
-              return newMessages;
-            }
-          } else {
-            // For regular or offer messages, match on content and sender
-            const tempIndex = prev.findIndex(msg => 
-              msg.isTemp && 
-              msg.senderId._id === newMessage.senderId._id && 
-              msg.content === newMessage.content &&
-              msg.messageType === newMessage.messageType
-            );
-            
-            if (tempIndex >= 0) {
-              // Replace temp message with real one
-              const newMessages = [...prev];
-              newMessages[tempIndex] = newMessage;
-              return newMessages;
-            }
-          }
-          
-          // If no temp message found, add as new message
-          return [...prev, newMessage];
-        });
-        
-        // Auto scroll to bottom when new message arrives
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-          }
-        }, 100);
-      }
-    });
-    
-    // Debug connection status
-    console.log("Current socket connected status:", socketService.isSocketConnected());
-    setSocketConnected(socketService.isSocketConnected());
-    
-    return () => {
-      // Clean up event listeners
-      console.log("Cleaning up socket event listeners");
-      if (messageSentUnsub) messageSentUnsub();
-      if (newMessageUnsub) newMessageUnsub();
-      
-      // Other event listeners will be cleaned up in the main socket cleanup
-    };
-  }, [contractId, socketService.getSocket()]);
-  
-  // Separate useEffect for other socket events to avoid too many reconnects
-  useEffect(() => {
-    if (!socketService.getSocket()) {
-      return;
-    }
-    
-    // Listen for message status updates
-    const messagesReadUnsub = socketService.on('messages_read', (data) => {
-      if (data && data.contractId === contractId && data.userId !== user._id) {
-        console.log('Messages read by other user:', data);
-      }
-    });
-    
-    // Listen for contract status updates
-    const contractUpdatedUnsub = socketService.on('contract_updated', (data) => {
-      if (data && data.contractId === contractId) {
-        console.log('Contract updated:', data);
-        
-        // Update contract status in UI
-        setContract(prev => {
-          if (prev) {
-            return {
-              ...prev,
-              status: data.status
-            };
-          }
-          return prev;
-        });
-        
-        // If contract was accepted, fetch messages again to ensure system message appears
-        if (data.status === 'accepted') {
-          refreshMessages();
-        }
-      }
-    });
-    
-    // Listen for errors
-    const errorUnsub = socketService.on('error', (error) => {
-      toast.error(error.message || 'Socket error occurred');
-      // Ensure spinner stops on any error
-      setSendingMessage(false);
-    });
-    
-    // Listen for offer accepted confirmation
-    const offerAcceptedUnsub = socketService.on('offer_accepted', (data) => {
-      if (data && data.contractId === contractId) {
-        console.log('Offer accepted confirmation:', data);
-        // Just ensure the spinner stops
-        setSendingMessage(false);
-      }
-    });
-    
-    return () => {
-      // Clean up event listeners
-      if (messagesReadUnsub) messagesReadUnsub();
-      if (contractUpdatedUnsub) contractUpdatedUnsub();
-      if (errorUnsub) errorUnsub();
-      if (offerAcceptedUnsub) offerAcceptedUnsub();
-    };
-  }, [contractId, user._id, socketService.getSocket()]);
+    setupChat();
+  }, [contractId, connectionIssue]);
   
   // Function to force reconnect socket
   const forceReconnect = () => {
@@ -303,19 +258,53 @@ const ChatInterface = () => {
       const response = await api.get(`/chat/contracts/${contractId}/messages`);
       
       if (response.data && response.data.messages) {
-        // Replace any temporary messages with real ones
-        setMessages(response.data.messages);
+        // Get existing temp messages that are not yet confirmed
+        const tempMessages = messages.filter(msg => msg.isTemp);
+        
+        // Get confirmed messages from server
+        const confirmedMessages = response.data.messages;
+        
+        // Create a new array with confirmed messages first, then any pending temps
+        // that aren't already in the confirmed list (to avoid duplicates)
+        const mergedMessages = [...confirmedMessages];
+        
+        // Add temp messages that don't have a match in confirmed messages
+        tempMessages.forEach(tempMsg => {
+          // Skip if we already have a confirmed message with the same content and sender
+          const hasConfirmed = confirmedMessages.some(
+            confirmedMsg => 
+              confirmedMsg.content === tempMsg.content && 
+              confirmedMsg.senderId._id === tempMsg.senderId._id &&
+              confirmedMsg.messageType === tempMsg.messageType
+          );
+          
+          if (!hasConfirmed) {
+            mergedMessages.push(tempMsg);
+          }
+        });
+        
+        // Sort by timestamp
+        mergedMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        
+        // Update messages state
+        setMessages(mergedMessages);
         
         // Restart the connection lost indicator
         setConnectionIssue(false);
         
         // Update oldest message timestamp for pagination
-        if (response.data.messages.length > 0) {
-          setOldestMessageTimestamp(response.data.messages[0].createdAt);
+        if (confirmedMessages.length > 0) {
+          setOldestMessageTimestamp(confirmedMessages[0].createdAt);
+        }
+        
+        // Rejoin the chat room
+        if (socketService.isSocketConnected()) {
+          socketService.joinChat(contractId);
         }
       }
     } catch (error) {
       console.error('Error refreshing messages:', error);
+      setConnectionIssue(true);
     }
   };
   
@@ -442,81 +431,143 @@ const ChatInterface = () => {
     }
   };
   
-  // Handle sending a text message
+  // Handle sending a message
   const handleSendMessage = async (e) => {
     e.preventDefault();
     
-    if (!messageText.trim()) return;
+    const text = messageText.trim();
+    if (!text) return;
+    
+    console.log('📤 Sending message:', text);
     
     try {
+      // Clear input field immediately for better UX
+      setMessageText('');
       setSendingMessage(true);
       
-      // Create a temporary ID that is more unique and trackable
-      const tempId = `temp-${user._id}-${Date.now()}`;
-      
-      // Create a temporary message for UI feedback
+      // Create a temporary message for instant feedback
+      const tempId = `temp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       const tempMessage = {
         _id: tempId,
+        isTemp: true,
         contractId,
+        content: text,
+        messageType: 'text',
+        createdAt: new Date().toISOString(),
         senderId: {
           _id: user._id,
           Name: user.Name,
           photo: user.photo
         },
-        recipientId: otherParty?._id,
-        messageType: 'text',
-        content: messageText,
-        createdAt: new Date().toISOString(),
-        isTemp: true
+        status: 'sending'
       };
       
-      // Add temp message to UI immediately
+      // Add to message list
       setMessages(prev => [...prev, tempMessage]);
       
-      // Clear input early for better UX
-      const messageToSend = messageText;
-      setMessageText('');
-      
-      // If socket is connected, send via socket for real-time delivery
-      if (socketService.isSocketConnected()) {
-        const messageSent = socketService.sendMessage(contractId, {
-          content: messageToSend,
-          messageType: 'text'
-        });
-        
-        if (!messageSent) {
-          // Fallback to REST API if socket fails
-          await api.post(`/chat/contracts/${contractId}/messages`, {
-            content: messageToSend,
-            messageType: 'text'
-          });
+      // Scroll to bottom
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
-      } else {
-        // Use REST API if socket is not connected
-        await api.post(`/chat/contracts/${contractId}/messages`, {
-          content: messageToSend,
-          messageType: 'text'
-        });
+      }, 50);
+      
+      // Prepare message data
+      const messageData = {
+        content: text,
+        senderId: user._id,
+        messageType: 'text'
+      };
+      
+      // Try sending through socket first
+      let sentViaSocket = false;
+      if (socketService.isSocketConnected()) {
+        sentViaSocket = socketService.sendMessage(contractId, messageData);
+        console.log('📤 Sent via socket:', sentViaSocket);
       }
       
-      // Safety timeout to ensure spinner stops after a maximum time
-      // This prevents spinner getting stuck if server doesn't acknowledge
+      // If socket send failed, use REST API
+      if (!sentViaSocket) {
+        console.log('📤 Sending via API instead');
+        const response = await api.post(`/chat/contracts/${contractId}/messages`, messageData);
+        
+        if (response.data && response.data.message) {
+          // Replace temp message with real one
+          setMessages(prev => {
+            return prev.map(msg => {
+              if (msg._id === tempId) {
+                return response.data.message;
+              }
+              return msg;
+            });
+          });
+          
+          setSendingMessage(false);
+        }
+      }
+      
+      // Set a safety timeout to ensure UI doesn't get stuck
       setTimeout(() => {
         setSendingMessage(false);
-      }, 3000);
+        
+        // Check if the temp message is still in 'sending' state
+        setMessages(prev => {
+          const hasUnconfirmedMessage = prev.some(msg => 
+            msg._id === tempId && msg.isTemp && msg.status === 'sending');
+          
+          if (hasUnconfirmedMessage) {
+            console.log('⚠️ Message still unconfirmed after timeout');
+            return prev.map(msg => {
+              if (msg._id === tempId && msg.isTemp) {
+                return {
+                  ...msg,
+                  status: 'uncertain',
+                  content: `${msg.content} (delivery unconfirmed)`
+                };
+              }
+              return msg;
+            });
+          }
+          
+          return prev;
+        });
+      }, 8000);
       
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', error);
       toast.error('Failed to send message');
       
-      // Remove temporary message on error
-      setMessages(prev => prev.filter(msg => !msg.isTemp));
-    } finally {
-      // Ensure spinner stops regardless of what happened
-      setTimeout(() => {
-        setSendingMessage(false);
-      }, 500);
+      // Mark temp message as failed
+      setMessages(prev => 
+        prev.map(msg => {
+          if (msg._id.startsWith('temp-') && msg.isTemp) {
+            return { ...msg, status: 'failed' };
+          }
+          return msg;
+        })
+      );
+      
+      setSendingMessage(false);
     }
+  };
+  
+  // Retry sending a failed message
+  const handleRetryMessage = (messageId) => {
+    // Find the failed message
+    const failedMessage = messages.find(msg => msg._id === messageId);
+    if (!failedMessage) return;
+    
+    // Remove the failed message
+    setMessages(prev => prev.filter(msg => msg._id !== messageId));
+    
+    // Put the content back in the input field
+    setMessageText(failedMessage.content.replace(' (delivery unconfirmed)', ''));
+    
+    // Focus the input field
+    setTimeout(() => {
+      const inputEl = document.getElementById('message-input');
+      if (inputEl) inputEl.focus();
+    }, 0);
   };
   
   // Handle counter offer form changes
@@ -664,17 +715,26 @@ const ChatInterface = () => {
       // Display success message immediately
       toast.success('Offer accepted successfully');
       
-      // If socket is connected, send via socket for real-time delivery
+      // Try socket first, fall back to API if needed
+      let sentViaSocket = false;
       if (socketService.isSocketConnected()) {
-        socketService.getSocket().emit('accept_offer', {
-          contractId
-        });
-      } else {
-        // Use REST API if socket is not connected
-        await api.post(`/chat/contracts/${contractId}/accept-offer`);
+        try {
+          sentViaSocket = socketService.acceptOffer(contractId);
+        } catch (socketError) {
+          console.error('Socket error when accepting offer:', socketError);
+          sentViaSocket = false;
+        }
       }
       
-      // No need for another toast since we already showed success message
+      // Use REST API if socket didn't work
+      if (!sentViaSocket) {
+        try {
+          await api.post(`/chat/contracts/${contractId}/accept-offer`);
+        } catch (apiError) {
+          console.error('API error when accepting offer:', apiError);
+          throw apiError; // Re-throw to be caught by outer catch
+        }
+      }
       
     } catch (error) {
       console.error('Error accepting offer:', error);
@@ -701,134 +761,145 @@ const ChatInterface = () => {
     }
   };
   
-  // Render a message bubble
-  const renderMessage = (message, index) => {
-    const isCurrentUser = message.senderId?._id === user?._id;
-    const isSystemMessage = message.messageType === 'systemMessage';
-    const isCounterOffer = message.messageType === 'counterOffer';
-    const previousMessage = index > 0 ? messages[index - 1] : null;
-    const showSenderInfo = !previousMessage || previousMessage.senderId?._id !== message.senderId?._id;
+  // Render message item
+  const MessageItem = ({ message }) => {
+    const isCurrentUser = message.senderId._id === user._id;
+    const formattedTime = formatMessageTime(message.createdAt);
     
-    if (isSystemMessage) {
-      // System message (centered)
-      return (
-        <div key={message._id} className="flex justify-center my-4">
-          <div className="bg-gray-100 text-gray-700 px-4 py-2 rounded-full text-sm">
-            {message.content}
-          </div>
-        </div>
-      );
-    }
-    
-    if (isCounterOffer) {
-      // Counter offer message (special format)
-      return (
-        <div key={message._id} className={`my-4 max-w-[80%] ${isCurrentUser ? 'ml-auto' : 'mr-auto'}`}>
-          {showSenderInfo && (
-            <div className={`text-xs mb-1 ${isCurrentUser ? 'text-right' : 'text-left'}`}>
-              {message.senderId?.Name || 'Unknown User'}
-            </div>
-          )}
-          
-          <div className={`rounded-lg border ${isCurrentUser ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
-            <div className="p-3 border-b border-gray-200">
-              <div className="flex items-center">
-                <FaHandshake className={`${isCurrentUser ? 'text-blue-500' : 'text-green-500'} mr-2`} />
-                <h3 className="font-medium">Counter Offer</h3>
-              </div>
-              <p className="text-sm text-gray-600 mt-1">{message.content}</p>
-            </div>
-            
-            <div className="p-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="flex items-center">
-                  <FaMoneyBillWave className="text-gray-500 mr-2" />
-                  <div>
-                    <p className="text-xs text-gray-500">Price Per Unit</p>
-                    <p className="font-medium">₹{message.offerDetails.pricePerUnit}</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center">
-                  <FaCalculator className="text-gray-500 mr-2" />
-                  <div>
-                    <p className="text-xs text-gray-500">Quantity</p>
-                    <p className="font-medium">{message.offerDetails.quantity} {contract?.unit || 'units'}</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center">
-                  <FaCalendarAlt className="text-gray-500 mr-2" />
-                  <div>
-                    <p className="text-xs text-gray-500">Delivery Date</p>
-                    <p className="font-medium">{new Date(message.offerDetails.deliveryDate).toLocaleDateString()}</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center">
-                  <FaMoneyBillWave className="text-gray-500 mr-2" />
-                  <div>
-                    <p className="text-xs text-gray-500">Total Value</p>
-                    <p className="font-medium">₹{message.offerDetails.pricePerUnit * message.offerDetails.quantity}</p>
-                  </div>
-                </div>
-              </div>
-              
-              {message.offerDetails.qualityRequirements && (
-                <div className="mt-2 text-sm">
-                  <p className="text-xs text-gray-500">Quality Requirements</p>
-                  <p className="text-sm">{message.offerDetails.qualityRequirements}</p>
-                </div>
-              )}
-              
-              {!isCurrentUser && contract?.status === 'negotiating' && (
-                <div className="mt-3 flex space-x-2">
-                  <button 
-                    onClick={handleAcceptOffer}
-                    disabled={sendingMessage}
-                    className="flex items-center bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                  >
-                    <FaCheck className="mr-1" /> Accept Offer
-                  </button>
-                  <button 
-                    onClick={() => setShowOfferForm(true)}
-                    className="flex items-center bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                  >
-                    <FaHandshake className="mr-1" /> Counter
-                  </button>
-                </div>
-              )}
-            </div>
-            
-            <div className="px-3 py-1 text-xs text-gray-500 text-right border-t border-gray-200">
-              {formatMessageTime(message.createdAt)}
-            </div>
-          </div>
-        </div>
-      );
-    }
-    
-    // Regular text message
     return (
-      <div key={message._id} className={`my-2 max-w-[70%] ${isCurrentUser ? 'ml-auto' : 'mr-auto'}`}>
-        {showSenderInfo && (
-          <div className={`text-xs mb-1 ${isCurrentUser ? 'text-right' : 'text-left'}`}>
-            {message.senderId?.Name || 'Unknown User'}
+      <div 
+        className={`mb-4 flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+      >
+        {!isCurrentUser && !message.messageType === 'systemMessage' && (
+          <div className="w-8 h-8 rounded-full overflow-hidden mr-2 mt-1">
+            {message.senderId.photo ? (
+              <img 
+                src={message.senderId.photo} 
+                alt={message.senderId.Name}
+                className="w-full h-full object-cover" 
+              />
+            ) : (
+              <div className="w-full h-full bg-gray-300 flex items-center justify-center text-gray-600">
+                <FaUser className="text-sm" />
+              </div>
+            )}
           </div>
         )}
         
-        <div className={`rounded-lg px-4 py-2 ${
-          isCurrentUser
-            ? 'bg-blue-500 text-white'
-            : 'bg-gray-200 text-gray-800'
-        }`}>
-          {message.content}
-          <div className={`text-xs mt-1 text-right ${
-            isCurrentUser ? 'text-blue-100' : 'text-gray-500'
+        <div className={`max-w-[75%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
+          {/* Message bubble */}
+          <div 
+            className={`rounded-lg p-3 ${
+              message.messageType === 'systemMessage' 
+                ? 'bg-gray-100 text-gray-700 italic mx-auto text-center max-w-md' 
+                : isCurrentUser 
+                  ? `bg-blue-600 text-white ${message.isTemp ? 'opacity-80' : ''}`
+                  : 'bg-gray-200 text-gray-800'
+            }`}
+          >
+            {/* Message content */}
+            <div className="whitespace-pre-wrap break-words">
+              {message.content}
+            </div>
+            
+            {/* Delivery status for current user's messages */}
+            {isCurrentUser && message.isTemp && (
+              <div className="mt-1 text-xs text-blue-200 flex items-center justify-end">
+                {message.status === 'failed' ? (
+                  <button 
+                    onClick={() => handleRetryMessage(message._id)}
+                    className="text-red-300 hover:text-red-100 flex items-center"
+                  >
+                    <FaExclamationTriangle className="mr-1" /> Failed - Click to retry
+                  </button>
+                ) : (
+                  <span className="flex items-center">
+                    <FaSpinner className="animate-spin mr-1" /> Sending...
+                  </span>
+                )}
+              </div>
+            )}
+            
+            {/* Special display for offer messages */}
+            {message.messageType === 'offerMessage' && message.offer && (
+              <div className="mt-2 pt-2 border-t border-opacity-20 border-gray-200 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Price:</span>
+                    <span className="ml-1 font-medium">₹{message.offer.pricePerUnit || 0}</span>
+                  </div>
+                  <div>
+                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Quantity:</span>
+                    <span className="ml-1 font-medium">{(message.offer.quantity || 0)} {contract?.unit || 'units'}</span>
+                  </div>
+                  <div>
+                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Delivery:</span>
+                    <span className="ml-1 font-medium">{message.offer.deliveryDate ? new Date(message.offer.deliveryDate).toLocaleDateString() : 'Not specified'}</span>
+                  </div>
+                  <div>
+                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Total:</span>
+                    <span className="ml-1 font-medium">₹{(parseFloat(message.offer.pricePerUnit || 0) * parseFloat(message.offer.quantity || 0)).toFixed(2)}</span>
+                  </div>
+                </div>
+                
+                {/* Offer response buttons for other party */}
+                {!isCurrentUser && contract?.status === 'negotiating' && (
+                  <div className="mt-2 pt-2 border-t border-opacity-20 border-gray-200 flex justify-between">
+                    <button 
+                      onClick={() => handleAcceptOffer(message._id)}
+                      className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 flex items-center"
+                      disabled={sendingMessage}
+                    >
+                      {sendingMessage ? <FaSpinner className="animate-spin mr-1" /> : <FaCheck className="mr-1" />}
+                      Accept
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setOfferFormData({
+                          pricePerUnit: message.offer.pricePerUnit || '',
+                          quantity: message.offer.quantity || '',
+                          deliveryDate: message.offer.deliveryDate ? new Date(message.offer.deliveryDate).toISOString().split('T')[0] : '',
+                          qualityRequirements: message.offer.qualityRequirements || '',
+                          specialRequirements: message.offer.specialRequirements || ''
+                        });
+                        setShowOfferForm(true);
+                      }}
+                      className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center"
+                    >
+                      <FaHandshake className="mr-1" /> Counter
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {/* Timestamp and sender info */}
+          <div className={`flex items-center mt-1 text-xs text-gray-500 ${
+            isCurrentUser ? 'justify-end' : 'justify-start'
           }`}>
-            {formatMessageTime(message.createdAt)}
+            {!isCurrentUser && !message.messageType === 'systemMessage' && (
+              <span className="mr-1 font-medium">{message.senderId.Name}</span>
+            )}
+            <span>{formattedTime}</span>
           </div>
         </div>
+        
+        {isCurrentUser && !message.messageType === 'systemMessage' && (
+          <div className="w-8 h-8 rounded-full overflow-hidden ml-2 mt-1">
+            {message.senderId.photo ? (
+              <img 
+                src={message.senderId.photo} 
+                alt="You"
+                className="w-full h-full object-cover" 
+              />
+            ) : (
+              <div className="w-full h-full bg-blue-300 flex items-center justify-center text-blue-600">
+                <FaUser className="text-sm" />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -947,44 +1018,81 @@ const ChatInterface = () => {
         </div>
       )}
       
-      {/* Chat messages */}
+      {/* Connection Status Indicator */}
+      <div className="px-3 py-1 text-xs border-t border-gray-200">
+        <div className="flex justify-between items-center">
+          <span className={`flex items-center ${socketConnected ? 'text-green-600' : 'text-red-600'}`}>
+            <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'} mr-1`}></span>
+            {socketConnected ? 'Connected' : 'Disconnected'}
+          </span>
+          
+          {!socketConnected && (
+            <button 
+              onClick={forceReconnect}
+              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+            >
+              <FaSpinner className={`mr-1 ${connectionIssue ? 'animate-spin' : ''}`} /> Reconnect
+            </button>
+          )}
+          
+          {connectionIssue && socketConnected && (
+            <button 
+              onClick={refreshMessages}
+              className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+            >
+              <FaSpinner className="mr-1" /> Refresh Messages
+            </button>
+          )}
+        </div>
+      </div>
+      
+      {/* Messages Area */}
       <div 
         ref={chatContainerRef}
-        className="flex-grow p-4 overflow-y-auto bg-gray-50"
+        className="flex-1 p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
       >
-        {/* Load more button */}
-        {hasMoreMessages && (
-          <div className="text-center mb-4">
+        {/* Load More Button */}
+        {hasMoreMessages && !loadingMore && (
+          <div className="flex justify-center mb-4">
             <button
               onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="px-4 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded-full transition-colors disabled:opacity-50"
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-full text-sm"
             >
-              {loadingMore ? (
-                <>
-                  <FaSpinner className="inline mr-1 animate-spin" /> Loading...
-                </>
-              ) : (
-                'Load older messages'
-              )}
+              Load earlier messages
             </button>
           </div>
         )}
         
-        {/* No messages placeholder */}
-        {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-gray-500">
-            <FaHandshake className="text-4xl mb-3 text-gray-400" />
-            <p className="mb-1">No messages yet</p>
-            <p className="text-sm">Start the conversation to negotiate this contract</p>
+        {/* Loading More Indicator */}
+        {loadingMore && (
+          <div className="flex justify-center mb-4">
+            <div className="flex items-center text-gray-500">
+              <FaSpinner className="animate-spin mr-2" />
+              <span>Loading earlier messages...</span>
+            </div>
           </div>
         )}
         
-        {/* Message list */}
-        {messages.map((message, index) => renderMessage(message, index))}
+        {/* Messages List */}
+        <div className="space-y-3">
+          {messages.map(message => (
+            <MessageItem key={message._id} message={message} />
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
         
-        {/* Invisible element for scrolling to bottom */}
-        <div ref={messagesEndRef} />
+        {/* Empty State */}
+        {messages.length === 0 && !loading && (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500">
+            <div className="bg-gray-100 p-4 rounded-full mb-3">
+              <FaHandshake className="text-3xl text-gray-400" />
+            </div>
+            <p className="text-center">Start your conversation about this contract.</p>
+            <p className="text-sm mt-2">
+              You can negotiate terms or discuss details about the product.
+            </p>
+          </div>
+        )}
       </div>
       
       {/* Counter offer form */}

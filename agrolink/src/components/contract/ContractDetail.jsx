@@ -9,7 +9,8 @@ import {
 import { 
   FaHandshake, FaCalendarAlt, FaMoneyBillWave, FaTractor, FaFileContract, 
   FaCheck, FaTimes, FaClock, FaUser, FaMapMarkerAlt, FaSeedling, FaLeaf, 
-  FaClipboardList, FaDownload, FaPrint, FaExclamationTriangle, FaHistory
+  FaClipboardList, FaDownload, FaPrint, FaExclamationTriangle, FaHistory, FaArrowRight,
+  FaUserTie
 } from 'react-icons/fa';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
@@ -20,10 +21,27 @@ const ContractDetail = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { contractRequests, loading, error } = useSelector(state => state.contractRequests);
+  const { user } = useSelector(state => state.auth);
   const [contract, setContract] = useState(null);
   const [cropDetails, setCropDetails] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  
+  // Determine if current user is farmer or buyer
+  const isFarmer = contract ? (contract.farmer._id === user._id || contract.farmer === user._id) : false;
+  const userRole = isFarmer ? 'farmer' : 'buyer';
+  const otherRole = isFarmer ? 'buyer' : 'farmer';
+
+  // Return personalized text based on user role
+  const personalizedText = {
+    roleLabel: isFarmer ? 'Farmer (You)' : 'Buyer (You)',
+    otherPartyLabel: isFarmer ? 'Buyer' : 'Farmer',
+    yourTermsTitle: isFarmer ? "Your Original Terms" : "Your Proposed Terms",
+    otherTermsTitle: isFarmer ? "Buyer's Proposed Terms" : "Farmer's Original Terms",
+    declineButtonText: isFarmer ? "Decline Request" : "Cancel Request",
+    negotiateButtonText: isFarmer ? "Negotiate with Buyer" : "Negotiate with Farmer",
+    cancelConfirmText: isFarmer ? "Are you sure you want to decline this contract request?" : "Are you sure you want to cancel this contract request?"
+  };
 
   // Custom function to determine if there's a difference between farmer and buyer terms
   const getTermDifference = (farmerValue, buyerValue) => {
@@ -258,7 +276,7 @@ const ContractDetail = () => {
   };
 
   const handleCancelContract = async () => {
-    if (window.confirm('Are you sure you want to cancel this contract request? This action cannot be undone.')) {
+    if (window.confirm(personalizedText.cancelConfirmText)) {
       try {
         setCancelLoading(true);
         console.log("Initiating contract cancellation for ID:", id);
@@ -461,13 +479,16 @@ const ContractDetail = () => {
 
       {/* Proposal Comparison Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* Farmer's Original Terms */}
+        {/* Farmer's Terms */}
         <div className="border rounded-lg overflow-hidden shadow-sm relative">
-          <div className="bg-green-50 p-4 border-b border-green-100">
+          <div className={`${isFarmer ? 'bg-green-100' : 'bg-green-50'} p-4 border-b border-green-100`}>
             <h3 className="font-semibold text-lg flex items-center">
-              <FaTractor className="mr-2 text-green-600" /> Farmer's Original Terms
+              <FaTractor className="mr-2 text-green-600" /> 
+              {isFarmer ? "Your Terms (Farmer)" : "Farmer's Terms"}
             </h3>
-            <span className="absolute top-4 right-4 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Original</span>
+            <span className="absolute top-4 right-4 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
+              {isFarmer ? "You" : "Original"}
+            </span>
           </div>
           <div className="p-5 space-y-4">
             <div className="flex items-start">
@@ -486,12 +507,12 @@ const ContractDetail = () => {
                     </p>
                     {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' && (
                       <p className="text-xs mt-1 text-red-500 font-medium">
-                        Buyer proposed {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit).percent}% lower price
+                        {isFarmer ? "Buyer proposed" : "You proposed"} {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit).percent}% lower price
                       </p>
                     )}
                     {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'increase' && (
                       <p className="text-xs mt-1 text-green-500 font-medium">
-                        Buyer proposed {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit).percent}% higher price
+                        {isFarmer ? "Buyer proposed" : "You proposed"} {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit).percent}% higher price
                       </p>
                     )}
                   </>
@@ -536,7 +557,7 @@ const ContractDetail = () => {
                 )}
                 {(cropDetails?.availableQuantity || contract.crop?.availableQuantity) && contract.quantity && contract.quantity > (cropDetails?.availableQuantity || contract.crop?.availableQuantity) && (
                   <p className="text-xs mt-1 text-amber-600 font-medium">
-                    Buyer requested more than available
+                    {isFarmer ? "Buyer" : "You"} requested more than available
                   </p>
                 )}
               </div>
@@ -559,13 +580,16 @@ const ContractDetail = () => {
           </div>
         </div>
         
-        {/* Buyer's Proposed Terms */}
+        {/* Buyer's Terms */}
         <div className="border rounded-lg overflow-hidden shadow-sm border-blue-100 relative">
-          <div className="bg-blue-50 p-4 border-b border-blue-100">
+          <div className={`${!isFarmer ? 'bg-blue-100' : 'bg-blue-50'} p-4 border-b border-blue-100`}>
             <h3 className="font-semibold text-lg flex items-center">
-              <FaUser className="mr-2 text-blue-600" /> Buyer's Proposed Terms
+              <FaUser className="mr-2 text-blue-600" /> 
+              {isFarmer ? "Buyer's Terms" : "Your Terms (Buyer)"}
             </h3>
-            <span className="absolute top-4 right-4 text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">Proposal</span>
+            <span className="absolute top-4 right-4 text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+              {isFarmer ? "Proposal" : "You"}
+            </span>
           </div>
           <div className="p-5 space-y-4">
             <div className="flex items-start">
@@ -857,7 +881,7 @@ const ContractDetail = () => {
               </p>
               {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit) && (
                 <p className="mt-1 text-xs text-blue-600 bg-blue-50 p-2 rounded inline-block">
-                  <span className="font-medium">With initial negotiation:</span> Price changed from 
+                  <span className="font-medium">With initial {isFarmer ? "buyer" : "your"} proposal:</span> Price changed from 
                   <span className="font-medium"> ₹{cropDetails?.price || contract.crop?.price}</span> to 
                   <span className="font-medium"> ₹{contract.pricePerUnit}</span>
                   {contract.quantity && cropDetails?.availableQuantity && contract.quantity !== cropDetails.availableQuantity && (
@@ -868,7 +892,7 @@ const ContractDetail = () => {
             </div>
           </div>
 
-          {/* If contract has negotiation history, show as a timeline item */}
+          {/* Negotiation history timeline item */}
           {contract.negotiationHistory && contract.negotiationHistory.length > 0 && (
             <div className="relative pl-12 pb-8">
               <div className="absolute left-0 rounded-full bg-blue-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
@@ -892,10 +916,34 @@ const ContractDetail = () => {
                     return 'Date not available';
                   })()}
                 </p>
+
+                {/* Show who made the last proposal */}
+                {(() => {
+                  const lastNegotiation = contract.negotiationHistory[contract.negotiationHistory.length - 1];
+                  if (lastNegotiation) {
+                    const proposedById = typeof lastNegotiation.proposedBy === 'object' ? 
+                      lastNegotiation.proposedBy?._id : lastNegotiation.proposedBy?.toString();
+                    const farmerId = typeof contract.farmer === 'object' ? 
+                      contract.farmer._id : contract.farmer?.toString();
+                    const proposedByFarmer = proposedById === farmerId;
+                    
+                    return (
+                      <p className="mt-1 text-xs bg-gray-50 p-2 rounded">
+                        Last proposal by: <span className="font-medium">
+                          {proposedByFarmer ? 
+                            (isFarmer ? 'You (Farmer)' : 'Farmer') : 
+                            (isFarmer ? 'Buyer' : 'You (Buyer)')}
+                        </span>
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
           )}
 
+          {/* Cancelled contract */}
           {contract.status === 'cancelled' && (
             <div className="relative pl-12 pb-8">
               <div className="absolute left-0 rounded-full bg-gray-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
@@ -923,6 +971,7 @@ const ContractDetail = () => {
             </div>
           )}
 
+          {/* Under negotiation */}
           {(contract.status === 'negotiating') && (
             <div className="relative pl-12 pb-8">
               <div className="absolute left-0 rounded-full bg-yellow-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
@@ -930,22 +979,46 @@ const ContractDetail = () => {
               </div>
               <div>
                 <p className="font-medium">Currently Under Negotiation</p>
-                <p className="text-sm text-gray-600">
-                  Awaiting response from {contract.negotiationHistory && 
-                    contract.negotiationHistory.length > 0 && 
-                    contract.negotiationHistory[contract.negotiationHistory.length - 1]?.proposedBy?._id === contract.farmer?._id 
-                    ? 'buyer' : 'farmer'}
-                </p>
+                
+                {(() => {
+                  // Determine who made the last proposal to show who we're awaiting response from
+                  if (contract.negotiationHistory && contract.negotiationHistory.length > 0) {
+                    const lastEntry = contract.negotiationHistory[contract.negotiationHistory.length - 1];
+                    const proposedById = typeof lastEntry.proposedBy === 'object' ? 
+                      lastEntry.proposedBy?._id : lastEntry.proposedBy?.toString();
+                    const farmerId = typeof contract.farmer === 'object' ? 
+                      contract.farmer._id : contract.farmer?.toString();
+                    const lastProposalByFarmer = proposedById === farmerId;
+                    
+                    // If farmer made last proposal, we're waiting for buyer response (and vice versa)
+                    const waitingForFarmerResponse = !lastProposalByFarmer;
+                    
+                    return (
+                      <p className="text-sm text-gray-600">
+                        Awaiting response from {waitingForFarmerResponse ? 
+                          (isFarmer ? 'you (Farmer)' : 'Farmer') : 
+                          (isFarmer ? 'Buyer' : 'you (Buyer)')}
+                      </p>
+                    );
+                  }
+                  return (
+                    <p className="text-sm text-gray-600">
+                      Awaiting response from {isFarmer ? 'you (Farmer)' : 'Farmer'}
+                    </p>
+                  );
+                })()}
+                
                 <button
                   onClick={() => navigate(`/chat/${contract._id}`)}
                   className="mt-2 text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors inline-flex items-center"
                 >
-                  <FaHandshake className="mr-1" /> Chat/Negotiate
+                  <FaHandshake className="mr-1" /> {personalizedText.negotiateButtonText}
                 </button>
               </div>
             </div>
           )}
 
+          {/* Contract approved/rejected */}
           {contract.status !== 'pending' && contract.status !== 'requested' && contract.status !== 'cancelled' && contract.status !== 'negotiating' && (
             <div className="relative pl-12 pb-8">
               <div className="absolute left-0 rounded-full bg-blue-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
@@ -986,6 +1059,7 @@ const ContractDetail = () => {
             </div>
           )}
 
+          {/* Contract completed */}
           {(contract.status === 'completed' || contract.status === 'fulfilled') && (
             <div className="relative pl-12">
               <div className="absolute left-0 rounded-full bg-green-600 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
@@ -1010,109 +1084,374 @@ const ContractDetail = () => {
         </div>
       </section>
 
-      {/* Negotiation History Section (Enhanced) */}
+      {/* Negotiation History */}
       {contract.negotiationHistory && contract.negotiationHistory.length > 0 && (
-        <section aria-labelledby="negotiation-heading" className="mb-8">
-          <h3 id="negotiation-heading" className="text-lg font-semibold mb-4 flex items-center">
-            <FaHistory className="mr-2 text-green-600" aria-hidden="true" /> Negotiation History
-          </h3>
+        <section aria-labelledby="negotiation-heading" className="rounded-lg bg-white p-6 shadow mb-8">
+          <div className="flex justify-between items-center mb-4">
+            <h3 id="negotiation-heading" className="text-xl font-semibold">Negotiation History</h3>
+            <div className="flex items-center space-x-2 text-sm text-gray-500">
+              <FaHistory className="text-blue-500" />
+              <span>{contract.negotiationHistory.length} {contract.negotiationHistory.length === 1 ? 'round' : 'rounds'} of negotiation</span>
+            </div>
+          </div>
           
-          <div className="border rounded-lg overflow-hidden shadow-sm">
-            <div className="bg-gray-50 p-4 border-b">
-              <div className="grid grid-cols-12 gap-4 font-medium text-gray-700">
-                <div className="col-span-2">Date</div>
-                <div className="col-span-2">Proposed By</div>
-                <div className="col-span-8">Changes</div>
+          <div className="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="text-center">
+                <span className="font-medium block text-sm text-blue-700">Total Rounds</span>
+                <span className="text-lg font-bold">{contract.negotiationHistory.length}</span>
+              </div>
+              
+              <div className="text-center">
+                <span className="font-medium block text-sm text-green-700">Farmer Proposals</span>
+                <span className="text-lg font-bold">{
+                  contract.negotiationHistory.filter(entry => {
+                    const proposedById = typeof entry.proposedBy === 'object' ? 
+                      entry.proposedBy?._id : entry.proposedBy?.toString();
+                    const farmerId = typeof contract.farmer === 'object' ? 
+                      contract.farmer._id : contract.farmer?.toString();
+                    return proposedById === farmerId;
+                  }).length
+                }</span>
+              </div>
+              
+              <div className="text-center">
+                <span className="font-medium block text-sm text-orange-700">Buyer Proposals</span>
+                <span className="text-lg font-bold">{
+                  contract.negotiationHistory.filter(entry => {
+                    const proposedById = typeof entry.proposedBy === 'object' ? 
+                      entry.proposedBy?._id : entry.proposedBy?.toString();
+                    const farmerId = typeof contract.farmer === 'object' ? 
+                      contract.farmer._id : contract.farmer?.toString();
+                    return proposedById !== farmerId;
+                  }).length
+                }</span>
               </div>
             </div>
-            
-            <div className="divide-y">
-              {contract.negotiationHistory.map((entry, index) => (
-                <div key={index} className={`p-4 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                  <div className="grid grid-cols-12 gap-4">
-                    <div className="col-span-2 text-sm text-gray-600">
-                      {(() => {
-                        try {
-                          return new Date(entry.proposedAt).toLocaleString();
-                        } catch (e) {
-                          return entry.proposedAt || 'Date not available';
-                        }
-                      })()}
-                    </div>
-                    <div className="col-span-2">
-                      <div className="flex items-center">
-                        {entry.proposedBy?._id === contract.farmer?._id ? (
-                          <FaTractor className="text-green-600 mr-1.5" size={14} />
+          </div>
+          
+          <div className="space-y-4">
+            {contract.negotiationHistory.map((entry, index) => {
+              // Determine if farmer or buyer
+              const proposedById = typeof entry.proposedBy === 'object' ? 
+                entry.proposedBy?._id : entry.proposedBy?.toString();
+              const farmerId = typeof contract.farmer === 'object' ? 
+                contract.farmer._id : contract.farmer?.toString();
+              const proposedByFarmer = proposedById === farmerId;
+              
+              // Determine if current user
+              const isCurrentUser = proposedById === user?._id?.toString();
+              
+              // Get name and image
+              const proposerName = proposedByFarmer 
+                ? (typeof contract.farmer === 'object' ? contract.farmer.Name : 'Farmer')
+                : (typeof contract.buyer === 'object' ? contract.buyer.Name : 'Buyer');
+              
+              const proposerImage = proposedByFarmer
+                ? (typeof contract.farmer === 'object' ? contract.farmer.photo : '')
+                : (typeof contract.buyer === 'object' ? contract.buyer.photo : '');
+              
+              // Get formatted date
+              const formattedDate = (() => {
+                try {
+                  if (!entry.proposedAt) return 'Unknown date';
+                  return new Date(entry.proposedAt).toLocaleDateString('en-US', {
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+                } catch (e) {
+                  return 'Invalid date';
+                }
+              })();
+              
+              // Calculate changes from previous entry
+              const getPreviousValues = () => {
+                if (index === 0) {
+                  // First negotiation - compare with original contract
+                  return {
+                    pricePerUnit: contract.originalTerms?.pricePerUnit || cropDetails?.price,
+                    quantity: contract.originalTerms?.quantity || cropDetails?.availableQuantity,
+                    deliveryDate: contract.originalTerms?.deliveryDate || contract.requestedDeliveryDate
+                  };
+                } else {
+                  // Compare with previous negotiation
+                  const prevEntry = contract.negotiationHistory[index - 1];
+                  return {
+                    pricePerUnit: prevEntry.proposedChanges?.pricePerUnit,
+                    quantity: prevEntry.proposedChanges?.quantity,
+                    deliveryDate: prevEntry.proposedChanges?.deliveryDate
+                  };
+                }
+              };
+              
+              const previousValues = getPreviousValues();
+              const changes = [];
+              
+              if (previousValues.pricePerUnit !== entry.proposedChanges.pricePerUnit) {
+                changes.push({
+                  label: 'Price',
+                  from: `₹${previousValues.pricePerUnit || 'N/A'}`,
+                  to: `₹${entry.proposedChanges.pricePerUnit}`
+                });
+              }
+              
+              if (previousValues.quantity !== entry.proposedChanges.quantity) {
+                changes.push({
+                  label: 'Quantity',
+                  from: `${previousValues.quantity || 'N/A'} ${contract.unit || 'units'}`,
+                  to: `${entry.proposedChanges.quantity} ${contract.unit || 'units'}`
+                });
+              }
+              
+              if (previousValues.deliveryDate !== entry.proposedChanges.deliveryDate) {
+                changes.push({
+                  label: 'Delivery Date',
+                  from: previousValues.deliveryDate ? new Date(previousValues.deliveryDate).toLocaleDateString() : 'N/A',
+                  to: new Date(entry.proposedChanges.deliveryDate).toLocaleDateString()
+                });
+              }
+              
+              // Set colors based on proposer
+              const bgColor = proposedByFarmer 
+                ? (isCurrentUser ? 'bg-green-50 border-green-300' : 'bg-green-50 border-green-200')
+                : (isCurrentUser ? 'bg-blue-50 border-blue-300' : 'bg-blue-50 border-blue-200');
+              
+              const headerBgColor = proposedByFarmer
+                ? (isCurrentUser ? 'bg-green-100' : 'bg-green-100')
+                : (isCurrentUser ? 'bg-blue-100' : 'bg-blue-100');
+              
+              return (
+                <div key={index} className={`border rounded-lg ${bgColor} overflow-hidden`}>
+                  <div className={`px-4 py-3 ${headerBgColor} flex justify-between items-center`}>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+                        {proposerImage ? (
+                          <img src={proposerImage} alt={proposerName} className="w-full h-full object-cover" />
                         ) : (
-                          <FaUser className="text-blue-600 mr-1.5" size={14} />
+                          proposedByFarmer ? <FaLeaf className="text-green-600" /> : <FaUserTie className="text-blue-600" />
                         )}
-                        <span className={entry.proposedBy?._id === contract.farmer?._id ? 'text-green-700' : 'text-blue-700'}>
-                          {entry.proposedBy?._id === contract.farmer?._id ? 'Farmer' : 'Buyer'}
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-900">
+                          {isCurrentUser 
+                            ? `You (${proposedByFarmer ? 'Farmer' : 'Buyer'})` 
+                            : `${proposerName} (${proposedByFarmer ? 'Farmer' : 'Buyer'})`}
                         </span>
+                        <span className="text-xs text-gray-500 block">Round {index + 1}</span>
                       </div>
                     </div>
-                    <div className="col-span-8">
-                      <div className="space-y-2">
-                        {Object.entries(entry.proposedChanges || {}).map(([key, value]) => {
-                          // Format the key name for better readability
-                          const formatKey = (key) => {
-                            switch(key) {
-                              case 'pricePerUnit': return 'Price Per Unit';
-                              case 'quantity': return 'Quantity';
-                              case 'deliveryDate': return 'Delivery Date';
-                              case 'qualityRequirements': return 'Quality Requirements';
-                              default: return key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-                            }
-                          };
-                          
-                          // Format value based on its type
-                          const formatValue = (key, value) => {
-                            if (key.toLowerCase().includes('date') && value) {
-                              try {
-                                return new Date(value).toLocaleDateString();
-                              } catch (e) {
-                                return value;
-                              }
-                            }
-                            if (key === 'pricePerUnit') return `₹${value}`;
-                            if (key === 'quantity') return `${value} ${contract.unit || 'units'}`;
-                            return value.toString();
-                          };
-                          
-                          return (
-                            <div key={key} className="flex items-center p-1.5 bg-gray-100 rounded">
-                              <span className="font-medium text-sm min-w-[120px]">{formatKey(key)}:</span> 
-                              <span className="text-sm">{formatValue(key, value)}</span>
-                            </div>
-                          );
-                        })}
-                        {entry.message && (
-                          <p className="mt-2 text-sm text-gray-700 italic bg-yellow-50 p-2 rounded border-l-2 border-yellow-300">
-                            "{entry.message}"
-                          </p>
-                        )}
+                    <div className="text-sm text-gray-500">{formattedDate}</div>
+                  </div>
+                  
+                  <div className="p-4">
+                    {entry.message && (
+                      <div className="mb-3 text-gray-700">
+                        <p>"{entry.message}"</p>
                       </div>
+                    )}
+                    
+                    <div className="grid md:grid-cols-2 gap-3 mt-2">
+                      <div className="bg-white rounded border border-gray-200 p-3">
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">Proposed Terms</h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Price Per Unit:</span>
+                            <span className="font-medium">₹{entry.proposedChanges.pricePerUnit}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Quantity:</span>
+                            <span className="font-medium">{entry.proposedChanges.quantity} {contract.unit || 'units'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Delivery Date:</span>
+                            <span className="font-medium">
+                              {entry.proposedChanges.deliveryDate 
+                                ? new Date(entry.proposedChanges.deliveryDate).toLocaleDateString() 
+                                : 'Not specified'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Total Value:</span>
+                            <span className="font-medium">
+                              ₹{entry.proposedChanges.pricePerUnit * entry.proposedChanges.quantity}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {changes.length > 0 && (
+                        <div className="bg-white rounded border border-gray-200 p-3">
+                          <h4 className="text-sm font-medium text-gray-900 mb-2">Changes Made</h4>
+                          <div className="space-y-3 text-sm">
+                            {changes.map((change, i) => (
+                              <div key={i} className="flex items-center">
+                                <span className="text-gray-600 w-1/3">{change.label}:</span>
+                                <div className="flex items-center">
+                                  <span className="line-through text-red-500">{change.from}</span>
+                                  <FaArrowRight className="mx-2 text-gray-400" />
+                                  <span className="text-green-600 font-medium">{change.to}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
+                    
+                    {entry.proposedChanges.specialRequirements && (
+                      <div className="mt-3 bg-white rounded border border-gray-200 p-3">
+                        <h4 className="text-sm font-medium text-gray-900 mb-1">Special Requirements</h4>
+                        <p className="text-sm text-gray-700">{entry.proposedChanges.specialRequirements}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
-            </div>
-            
-            {/* Add a helpful message or button if negotiation is ongoing */}
-            {contract.status === 'negotiating' && (
-              <div className="p-4 bg-blue-50 border-t border-blue-100 text-center">
-                <p className="text-sm text-blue-800 mb-2">This contract is currently under negotiation.</p>
-                <button
-                  onClick={() => navigate(`/chat/${contract._id}`)}
-                  className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors inline-flex items-center"
-                >
-                  <FaHandshake className="mr-1" /> Chat/Negotiate
-                </button>
-              </div>
-            )}
+              );
+            })}
           </div>
         </section>
       )}
+
+      {/* Contract Stats/Summary Section - New */}
+      <section aria-labelledby="contract-summary" className="mb-8">
+        <h3 id="contract-summary" className="text-xl font-semibold mb-4 flex items-center">
+          <FaClipboardList className="mr-2 text-green-600" aria-hidden="true" /> Contract Summary
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Negotiation Stats */}
+          <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
+            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+              <FaHistory className="mr-1.5 text-blue-500" /> Negotiation Stats
+            </h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Total Rounds:</span>
+                <span className="font-medium">{contract.negotiationHistory?.length || 0}</span>
+              </div>
+              
+              {/* Count farmer proposals - handle both object and string IDs */}
+              {(() => {
+                const farmerProposals = contract.negotiationHistory?.filter(entry => {
+                  const proposedById = typeof entry.proposedBy === 'object' ? 
+                    entry.proposedBy?._id : entry.proposedBy?.toString();
+                  const farmerId = typeof contract.farmer === 'object' ? 
+                    contract.farmer._id : contract.farmer?.toString();
+                  return proposedById === farmerId;
+                }).length || 0;
+                
+                return (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Farmer Proposals:</span>
+                    <span className="font-medium text-green-600">
+                      {farmerProposals}
+                    </span>
+                  </div>
+                );
+              })()}
+              
+              {/* Count buyer proposals - handle both object and string IDs */}
+              {(() => {
+                const buyerProposals = contract.negotiationHistory?.filter(entry => {
+                  const proposedById = typeof entry.proposedBy === 'object' ? 
+                    entry.proposedBy?._id : entry.proposedBy?.toString();
+                  const farmerId = typeof contract.farmer === 'object' ? 
+                    contract.farmer._id : contract.farmer?.toString();
+                  return proposedById !== farmerId;
+                }).length || 0;
+                
+                return (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Buyer Proposals:</span>
+                    <span className="font-medium text-blue-600">
+                      {buyerProposals}
+                    </span>
+                  </div>
+                );
+              })()}
+              
+              <div className="flex justify-between">
+                <span className="text-gray-600">Current Status:</span>
+                <span className="font-medium">{getStatusBadge(contract.status)}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Current Terms */}
+          <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
+            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+              <FaFileContract className="mr-1.5 text-green-500" /> Current Terms
+            </h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Price Per Unit:</span>
+                <span className="font-medium">₹{contract.pricePerUnit}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Quantity:</span>
+                <span className="font-medium">{contract.quantity} {contract.unit || 'units'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Total Value:</span>
+                <span className="font-medium">₹{contract.totalAmount || (contract.pricePerUnit * contract.quantity)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Delivery Date:</span>
+                <span className="font-medium">
+                  {(() => {
+                    try {
+                      return new Date(contract.deliveryDate).toLocaleDateString();
+                    } catch (e) {
+                      return 'Not specified';
+                    }
+                  })()}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Quick Actions */}
+          <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
+            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+              <FaHandshake className="mr-1.5 text-blue-500" /> Quick Actions
+            </h4>
+            <div className="space-y-3">
+              <button
+                onClick={() => navigate(`/chat/${contract._id}`)}
+                className="w-full text-center py-2 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded hover:from-green-600 hover:to-blue-600 transition-all flex items-center justify-center"
+              >
+                <FaHandshake className="mr-2" /> {personalizedText.negotiateButtonText}
+              </button>
+              
+              {contract.status === 'negotiating' && (
+                <button
+                  onClick={handleCancelContract}
+                  disabled={cancelLoading}
+                  className="w-full text-center py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-all flex items-center justify-center"
+                >
+                  {cancelLoading ? (
+                    <>
+                      <span className="animate-spin mr-2">⟳</span> {personalizedText.declineButtonText}...
+                    </>
+                  ) : (
+                    <><FaTimes className="mr-2" /> {personalizedText.declineButtonText}</>
+                  )}
+                </button>
+              )}
+              
+              <button
+                onClick={handlePrint}
+                className="w-full text-center py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-all flex items-center justify-center"
+              >
+                <FaPrint className="mr-2" /> Print Details
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Action Buttons */}
       <div className="flex flex-wrap justify-between items-center mt-8 print:hidden gap-4">
@@ -1134,7 +1473,7 @@ const ContractDetail = () => {
               onClick={() => navigate(`/chat/${contract._id}`)}
               aria-label="Chat or negotiate"
             >
-              <FaHandshake className="mr-2" /> Chat/Negotiate
+              <FaHandshake className="mr-2" /> {personalizedText.negotiateButtonText}
             </button>
             
             <button
@@ -1145,12 +1484,12 @@ const ContractDetail = () => {
             >
               {cancelLoading ? (
                 <>
-                  <span className="animate-spin mr-2">⟳</span> Cancelling...
+                  <span className="animate-spin mr-2">⟳</span> {personalizedText.declineButtonText}...
                 </>
               ) : contract.status === 'cancelled' ? (
                 <>Already Cancelled</>
               ) : (
-                <><FaTimes className="mr-2" /> Decline Offer</>
+                <><FaTimes className="mr-2" /> {personalizedText.declineButtonText}</>
               )}
             </button>
           </div>

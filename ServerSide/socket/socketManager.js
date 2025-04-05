@@ -75,6 +75,18 @@ const setupSocketServer = (io) => {
       }
     });
     
+    // Handle heartbeat for connection monitoring
+    socket.on('heartbeat', (data, callback) => {
+      if (typeof callback === 'function') {
+        // Send a proper acknowledgment with status
+        callback({ 
+          status: 'ok', 
+          serverTime: Date.now(),
+          receivedTime: data?.timestamp || null
+        });
+      }
+    });
+    
     // Handle join chat room with more logging
     socket.on('join_chat', async ({ contractId }) => {
       try {
