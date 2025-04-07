@@ -604,38 +604,63 @@ const ContractDetail = () => {
           <div>
             {/* Contract Summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              {/* Crop Information Card */}
+              {/* Latest Offer / Decided Terms Card */}
               <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
                 <h3 className="text-lg font-semibold mb-4 flex items-center text-gray-800">
-                  <FaSeedling className="mr-2 text-green-600" /> Crop Information
+                  {contract.status === 'accepted' || contract.status === 'active' ? (
+                    <>
+                      <FaCheck className="mr-2 text-green-600" /> Decided Terms
+                    </>
+                  ) : (
+                    <>
+                      <FaHandshake className="mr-2 text-blue-600" /> Latest Offer
+                    </>
+                  )}
                 </h3>
                 <div className="space-y-3">
                   <div className="flex">
-                    <span className="font-medium text-gray-600 w-32">Crop Name:</span>
+                    <span className="font-medium text-gray-600 w-32">Product:</span>
                     <span className="text-gray-800">{cropDetails?.name || contract.crop?.name || 'Not specified'}</span>
                   </div>
                   <div className="flex">
                     <span className="font-medium text-gray-600 w-32">Quantity:</span>
-                    <span className="text-gray-800">{contract.quantity} {contract.unit}</span>
+                    <span className="text-gray-800">
+                      {contract.negotiationHistory && contract.negotiationHistory.length > 0 
+                        ? `${contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.quantity} ${contract.unit}`
+                        : `${contract.quantity} ${contract.unit}`}
+                    </span>
                   </div>
                   <div className="flex">
                     <span className="font-medium text-gray-600 w-32">Price Per Unit:</span>
-                    <span className="text-gray-800">{formatCurrency(contract.pricePerUnit)}</span>
+                    <span className="text-gray-800">
+                      {contract.negotiationHistory && contract.negotiationHistory.length > 0 
+                        ? formatCurrency(contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.pricePerUnit)
+                        : formatCurrency(contract.pricePerUnit)}
+                    </span>
                   </div>
                   <div className="flex">
                     <span className="font-medium text-gray-600 w-32">Total Value:</span>
-                    <span className="text-gray-800 font-semibold">{formatCurrency(contract.totalAmount)}</span>
+                    <span className="text-gray-800 font-semibold">
+                      {contract.negotiationHistory && contract.negotiationHistory.length > 0 
+                        ? formatCurrency(contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.pricePerUnit * 
+                          contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.quantity)
+                        : formatCurrency(contract.totalAmount)}
+                    </span>
                   </div>
-                  {cropDetails?.category && (
+                  <div className="flex">
+                    <span className="font-medium text-gray-600 w-32">Delivery Date:</span>
+                    <span className="text-gray-800">
+                      {contract.negotiationHistory && contract.negotiationHistory.length > 0 
+                        ? formatDate(contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.deliveryDate)
+                        : formatDate(contract.deliveryDate)}
+                    </span>
+                  </div>
+                  {contract.negotiationHistory && contract.negotiationHistory.length > 0 && (
                     <div className="flex">
-                      <span className="font-medium text-gray-600 w-32">Category:</span>
-                      <span className="text-gray-800">{cropDetails.category}</span>
-                    </div>
-                  )}
-                  {cropDetails?.organic !== undefined && (
-                    <div className="flex">
-                      <span className="font-medium text-gray-600 w-32">Organic:</span>
-                      <span className="text-gray-800">{cropDetails.organic ? 'Yes' : 'No'}</span>
+                      <span className="font-medium text-gray-600 w-32">Last Updated:</span>
+                      <span className="text-gray-800">
+                        {formatDate(contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedAt)}
+                      </span>
                     </div>
                   )}
                 </div>
