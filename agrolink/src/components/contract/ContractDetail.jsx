@@ -1772,11 +1772,114 @@ const ContractDetail = () => {
               <FaHandshake className="mr-2 text-blue-600" /> Make a Counter Offer
             </h3>
             
-            <form onSubmit={(e) => {
+            <form onSubmit={async (e) => {
               e.preventDefault();
-              // Handle negotiation submission
-              setShowNegotiateModal(false);
-              toast.success("Counter offer sent successfully!");
+              const formData = new FormData(e.target);
+              
+              try {
+                setCancelLoading(true);
+                
+                // Create offer data
+                const offerData = {
+                  pricePerUnit: Number(formData.get('price')),
+                  quantity: Number(formData.get('quantity')),
+                  deliveryDate: formData.get('deliveryDate'),
+                  message: formData.get('message') || "Counter offer"
+                };
+                
+                // 1. Create a chat message with counter offer (the same format as in ChatInterface.jsx)
+                const clientMessageId = `client-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+                
+                const chatMessage = {
+                  content: offerData.message || "I'm proposing new terms for our contract.",
+                  messageType: 'counterOffer',
+                  clientMessageId,
+                  offer: {
+                    pricePerUnit: offerData.pricePerUnit,
+                    quantity: offerData.quantity,
+                    deliveryDate: new Date(offerData.deliveryDate).toISOString(),
+                    qualityRequirements: "",
+                    specialRequirements: ""
+                  }
+                };
+                
+                try {
+                  // Import socket service and api dynamically
+                  const { default: socketService } = await import('../../services/socket');
+                  const { api } = await import('../../services/api');
+                  
+                  // 2. Send the counter offer as a chat message first
+                  let chatMessageSent = false;
+                  
+                  if (socketService.isSocketConnected()) {
+                    // Try to send via socket if connected
+                    chatMessageSent = socketService.sendMessage(contract._id, chatMessage);
+                  }
+                  
+                  if (!chatMessageSent) {
+                    // Fallback to REST API if socket fails
+                    await api.post(`/chat/contracts/${contract._id}/messages`, chatMessage);
+                  }
+                  
+                  // 3. Update contract status through API to ensure it's in negotiating state
+                  const negotiationData = {
+                    status: 'negotiating',
+                    counterOffer: {
+                      quantity: offerData.quantity,
+                      pricePerUnit: offerData.pricePerUnit,
+                      deliveryDate: offerData.deliveryDate,
+                      paymentTerms: '',
+                      remarks: offerData.message,
+                      proposedBy: user._id
+                    }
+                  };
+                  
+                  const response = await api.put(`/contracts/${contract._id}/status`, negotiationData);
+                  
+                  if (response && response.data && (response.data.success || response.status === 200)) {
+                    toast.success("Counter offer sent successfully!");
+                    
+                    // Update local contract state with new negotiation entry
+                    setContract(prevContract => {
+                      const updatedNegotiationHistory = [
+                        ...(prevContract.negotiationHistory || []),
+                        {
+                          proposedBy: user._id,
+                          proposedAt: new Date().toISOString(),
+                          message: offerData.message,
+                          proposedChanges: {
+                            pricePerUnit: offerData.pricePerUnit,
+                            quantity: offerData.quantity,
+                            deliveryDate: offerData.deliveryDate
+                          }
+                        }
+                      ];
+                      
+                      return {
+                        ...prevContract,
+                        negotiationHistory: updatedNegotiationHistory,
+                        status: 'negotiating' // Ensure status is set to negotiating
+                      };
+                    });
+                    
+                    // Close the modal and switch to negotiations tab
+                    setShowNegotiateModal(false);
+                    setActiveTab('negotiations');
+                  } else {
+                    // Handle case where response exists but success is false
+                    const errorMessage = response?.data?.message || "Failed to send counter offer. Please try again.";
+                    toast.error(errorMessage);
+                  }
+                } catch (apiError) {
+                  console.error("API Error sending counter offer:", apiError);
+                  toast.error("Failed to connect to the server. Please check your connection and try again.");
+                }
+              } catch (error) {
+                console.error("General error sending counter offer:", error);
+                toast.error("An error occurred while sending your counter offer. Please try again.");
+              } finally {
+                setCancelLoading(false);
+              }
             }}>
               <div className="space-y-4">
                 <div>
@@ -1788,7 +1891,11 @@ const ContractDetail = () => {
                     id="price"
                     name="price"
                     min="1"
-                    defaultValue={contract.pricePerUnit}
+                    defaultValue={
+                      contract.negotiationHistory && contract.negotiationHistory.length > 0
+                        ? contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.pricePerUnit
+                        : contract.pricePerUnit
+                    }
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -1803,7 +1910,11 @@ const ContractDetail = () => {
                     id="quantity"
                     name="quantity"
                     min="1"
-                    defaultValue={contract.quantity}
+                    defaultValue={
+                      contract.negotiationHistory && contract.negotiationHistory.length > 0
+                        ? contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.quantity
+                        : contract.quantity
+                    }
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -1819,7 +1930,11 @@ const ContractDetail = () => {
                     name="deliveryDate"
                     defaultValue={(() => {
                       try {
-                        return new Date(contract.deliveryDate).toISOString().split('T')[0];
+                        const dateValue = contract.negotiationHistory && contract.negotiationHistory.length > 0
+                          ? contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.deliveryDate
+                          : contract.deliveryDate;
+                          
+                        return new Date(dateValue).toISOString().split('T')[0];
                       } catch (e) {
                         return '';
                       }
@@ -1852,9 +1967,16 @@ const ContractDetail = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    disabled={cancelLoading}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
                   >
-                    Send Counter Offer
+                    {cancelLoading ? (
+                      <>Processing...</>
+                    ) : (
+                      <>
+                        <FaHandshake className="mr-2" /> Send Counter Offer
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
