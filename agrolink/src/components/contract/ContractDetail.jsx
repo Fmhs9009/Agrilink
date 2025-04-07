@@ -67,6 +67,19 @@ const ContractDetail = () => {
     }
   };
   
+  // Check if active tab is no longer accessible due to contract status
+  useEffect(() => {
+    // If on terms tab but contract is not in an approved state, redirect to overview
+    if (activeTab === 'terms' && !['accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract?.status)) {
+      setActiveTab('overview');
+    }
+    
+    // If on progress tab but contract is not in an approved state, redirect to overview
+    if (activeTab === 'progress' && !['accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract?.status)) {
+      setActiveTab('overview');
+    }
+  }, [contract?.status, activeTab]);
+  
   // Determine if current user is farmer or buyer
   const isFarmer = contract ? (contract.farmer._id === user._id || contract.farmer === user._id) : false;
   const userRole = isFarmer ? 'farmer' : 'buyer';
@@ -562,14 +575,19 @@ const ContractDetail = () => {
           >
             Overview
           </button>
-          <button 
-            className={`px-4 py-3 text-sm font-medium ${activeTab === 'terms' 
-              ? 'border-b-2 border-green-600 text-green-600' 
-              : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
-            onClick={() => setActiveTab('terms')}
-          >
-            Contract Terms
-          </button>
+          
+          {/* Only show Detailed Contract Terms tab when contract is accepted or later */}
+          {['accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract.status) && (
+            <button 
+              className={`px-4 py-3 text-sm font-medium ${activeTab === 'terms' 
+                ? 'border-b-2 border-green-600 text-green-600' 
+                : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
+              onClick={() => setActiveTab('terms')}
+            >
+              Detailed Contract Terms
+            </button>
+          )}
+          
           <button 
             className={`px-4 py-3 text-sm font-medium ${activeTab === 'negotiations' 
               ? 'border-b-2 border-green-600 text-green-600' 
@@ -578,22 +596,18 @@ const ContractDetail = () => {
           >
             Negotiation History
           </button>
-          <button 
-            className={`px-4 py-3 text-sm font-medium ${activeTab === 'progress' 
-              ? 'border-b-2 border-green-600 text-green-600' 
-              : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
-            onClick={() => setActiveTab('progress')}
-          >
-            Progress Updates
-          </button>
-          <button 
-            className={`px-4 py-3 text-sm font-medium ${activeTab === 'actions' 
-              ? 'border-b-2 border-green-600 text-green-600' 
-              : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
-            onClick={() => setActiveTab('actions')}
-          >
-            Actions
-          </button>
+          
+          {/* Only show Progress Updates tab for active contracts */}
+          {['accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract.status) && (
+            <button 
+              className={`px-4 py-3 text-sm font-medium ${activeTab === 'progress' 
+                ? 'border-b-2 border-green-600 text-green-600' 
+                : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
+              onClick={() => setActiveTab('progress')}
+            >
+              Progress Updates
+            </button>
+          )}
         </nav>
       </div>
 
@@ -1039,8 +1053,11 @@ const ContractDetail = () => {
             <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-6">
               <div className="bg-gray-100 p-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-800 flex items-center">
-                  <FaFileContract className="mr-2 text-green-600" /> Contract Terms
+                  <FaFileContract className="mr-2 text-green-600" /> Detailed Contract Terms
                 </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  These are the finalized terms that were agreed upon by both parties.
+                </p>
               </div>
               
               <div className="divide-y divide-gray-200">
