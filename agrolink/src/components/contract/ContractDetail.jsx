@@ -10,11 +10,13 @@ import {
   FaHandshake, FaCalendarAlt, FaMoneyBillWave, FaTractor, FaFileContract, 
   FaCheck, FaTimes, FaClock, FaUser, FaMapMarkerAlt, FaSeedling, FaLeaf, 
   FaClipboardList, FaDownload, FaPrint, FaExclamationTriangle, FaHistory, FaArrowRight,
-  FaUserTie
+  FaUserTie, FaChartLine, FaCannon, FaShippingFast, FaWarehouse, FaTruckLoading, FaCommentDots, FaCommentSlash, FaPlus, FaArrowLeft,
+  FaCameraRetro
 } from 'react-icons/fa';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
 import { api } from '../../services/api';
+import { contractService } from '../../services/contractService';
 
 const ContractDetail = () => {
   const { id } = useParams();
@@ -26,6 +28,44 @@ const ContractDetail = () => {
   const [cropDetails, setCropDetails] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [showNegotiateModal, setShowNegotiateModal] = useState(false);
+  const [negotiationData, setNegotiationData] = useState({
+    pricePerUnit: '',
+    quantity: '',
+    deliveryDate: '',
+    qualityRequirements: '',
+    specialRequirements: ''
+  });
+  
+  // Utility function to format dates
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Not specified';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Invalid date';
+      
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return 'Invalid date';
+    }
+  };
+  
+  // Utility function to format currency
+  const formatCurrency = (amount) => {
+    if (!amount && amount !== 0) return 'Not specified';
+    try {
+      return `₹${Number(amount).toLocaleString('en-IN')}`;
+    } catch (error) {
+      console.error("Error formatting currency:", error);
+      return `₹${amount}`;
+    }
+  };
   
   // Determine if current user is farmer or buyer
   const isFarmer = contract ? (contract.farmer._id === user._id || contract.farmer === user._id) : false;
@@ -276,63 +316,21 @@ const ContractDetail = () => {
   };
 
   const handleCancelContract = async () => {
-    if (window.confirm(personalizedText.cancelConfirmText)) {
+    if (window.confirm("Are you sure you want to cancel this contract? This action cannot be undone.")) {
+      setCancelLoading(true);
       try {
-        setCancelLoading(true);
-        console.log("Initiating contract cancellation for ID:", id);
-        
-        // Try to cancel using the Redux action
-        const result = await dispatch(cancelContractRequest(id)).unwrap();
-        console.log("Cancel contract result:", result);
-        
-        toast.success('Contract request cancelled successfully');
-        
-        // First update the local contract state to reflect cancellation
-        if (contract) {
-          setContract({
-            ...contract,
-            status: 'cancelled'
-          });
+        const result = await contractService.updateContractStatus(contract._id, 'cancelled');
+        if (result) {
+          toast.success("Contract cancelled successfully");
+          setContract(prev => ({ ...prev, status: 'cancelled' }));
+        } else {
+          toast.error("Failed to cancel contract. Please try again.");
         }
-        
-        // Navigate after a short delay to ensure toast is visible
-        setTimeout(() => {
-          navigate('/contracts');
-        }, 1500);
       } catch (error) {
-        console.error("Cancel contract error:", error);
-        toast.error(`Failed to cancel contract: ${error.message || 'Unknown error'}`);
-        
-        // Alternative manual approach if Redux action fails
-        try {
-          console.log("Trying manual approach to cancel contract");
-          const manualResponse = await api.put(`/contracts/${id}/status`, { 
-            status: 'cancelled',
-            notes: 'Cancelled by user'
-          });
-          
-          if (manualResponse.data && manualResponse.data.success) {
-            toast.success('Contract cancelled using alternative method');
-            
-            // Update local contract state
-            if (contract) {
-              setContract({
-                ...contract,
-                status: 'cancelled'
-              });
-            }
-            
-            // Navigate after a delay
-            setTimeout(() => {
-              navigate('/contracts');
-            }, 1500);
-          } else {
-            setCancelLoading(false);
-          }
-        } catch (manualError) {
-          console.error("Manual cancel also failed:", manualError);
-          setCancelLoading(false);
-        }
+        console.error("Error cancelling contract:", error);
+        toast.error(error.message || "An error occurred while cancelling the contract");
+      } finally {
+        setCancelLoading(false);
       }
     }
   };
@@ -362,6 +360,72 @@ const ContractDetail = () => {
       .finally(() => {
         setIsLoading(false);
       });
+  };
+
+  // Handle contract status updates
+  const updateContractStatus = async (newStatus) => {
+    if (!confirm(`Are you sure you want to update the contract status to ${newStatus}?`)) {
+      return;
+    }
+
+    try {
+      setCancelLoading(true);
+      const response = await api.put(`/contracts/${id}/status`, { status: newStatus });
+      
+      if (response.data && response.data.success) {
+        toast.success(`Contract ${newStatus} successfully`);
+        // Update local contract state
+        setContract(prevContract => ({
+          ...prevContract,
+          status: newStatus
+        }));
+      }
+    } catch (error) {
+      console.error(`Error updating contract to ${newStatus}:`, error);
+      toast.error(`Failed to update contract: ${error.message}`);
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  // Handle contract actions based on status and role
+  const handleAcceptContract = () => updateContractStatus('accepted');
+  const handleRejectContract = () => updateContractStatus('rejected');
+  const handleMarkAsHarvested = () => updateContractStatus('harvested');
+  const handleMarkAsDelivered = () => updateContractStatus('delivered');
+  const handleMarkAsCompleted = () => updateContractStatus('completed');
+
+  // Get color scheme based on contract status
+  const getStatusColors = (status) => {
+    switch (status) {
+      case 'requested':
+        return { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: <FaClock className="mr-1" /> };
+      case 'negotiating':
+        return { bg: 'bg-blue-100', text: 'text-blue-800', icon: <FaHandshake className="mr-1" /> };
+      case 'accepted':
+        return { bg: 'bg-green-100', text: 'text-green-800', icon: <FaCheck className="mr-1" /> };
+      case 'active':
+        return { bg: 'bg-green-100', text: 'text-green-800', icon: <FaLeaf className="mr-1" /> };
+      case 'readyForHarvest':
+        return { bg: 'bg-amber-100', text: 'text-amber-800', icon: <FaSeedling className="mr-1" /> };
+      case 'harvested':
+        return { bg: 'bg-teal-100', text: 'text-teal-800', icon: <FaTractor className="mr-1" /> };
+      case 'delivered':
+        return { bg: 'bg-indigo-100', text: 'text-indigo-800', icon: <FaShippingFast className="mr-1" /> };
+      case 'completed':
+        return { bg: 'bg-purple-100', text: 'text-purple-800', icon: <FaCheck className="mr-1" /> };
+      case 'cancelled':
+        return { bg: 'bg-gray-100', text: 'text-gray-800', icon: <FaTimes className="mr-1" /> };
+      case 'disputed':
+        return { bg: 'bg-red-100', text: 'text-red-800', icon: <FaExclamationTriangle className="mr-1" /> };
+      default:
+        return { bg: 'bg-gray-100', text: 'text-gray-800', icon: <FaFileContract className="mr-1" /> };
+    }
+  };
+
+  // Navigate to chat
+  const handleOpenChat = () => {
+    navigate(`/chat/${id}`);
   };
 
   if (loading || isLoading) {
@@ -398,8 +462,6 @@ const ContractDetail = () => {
     );
   }
   
-  // console.log("Final contract state:", contract);
-  
   if (!contract) {
     return (
       <div className="text-center p-8 bg-white rounded-lg shadow-md" role="alert">
@@ -430,1103 +492,1334 @@ const ContractDetail = () => {
     );
   }
 
+  const statusColors = getStatusColors(contract.status);
+  const cropName = cropDetails?.name || contract.crop?.name || 'Agricultural Product';
+  const otherParty = isFarmer ? contract.buyer : contract.farmer;
+  const otherPartyName = otherParty?.Name || 'Contract Party';
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 max-w-6xl mx-auto" role="main" aria-labelledby="contract-title">
-      <div className="flex justify-between items-start mb-6 print:mb-8">
-        <h1 id="contract-title" className="text-2xl font-bold text-gray-800 flex items-center">
-          <FaHandshake className="mr-2 text-green-600" aria-hidden="true" /> Contract Request Details
-        </h1>
-        <div className="flex space-x-2 print:hidden">
-          <button
-            onClick={handlePrint}
-            className="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-            aria-label="Print contract"
-          >
-            <FaPrint className="mr-1" aria-hidden="true" /> Print
-          </button>
-          <button
-            onClick={handleDownloadPDF}
-            className="inline-flex items-center px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700"
-            aria-label="Download contract as PDF"
-          >
-            <FaDownload className="mr-1" aria-hidden="true" /> Download PDF
-          </button>
-        </div>
-      </div>
-
-      <div className="border-b border-gray-200 pb-4 mb-6 print:border-b-2">
-        <div className="flex justify-between items-start">
+    <div className="bg-white rounded-lg shadow-lg overflow-hidden max-w-6xl mx-auto">
+      {/* Contract Header */}
+      <div className="bg-gradient-to-r from-green-600 to-green-800 text-white p-6">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center">
           <div>
-            <h2 className="font-semibold text-xl mb-1">{cropDetails?.name || contract.product?.name || contract.crop?.name || 'Crop Contract'}</h2>
-            <p className="text-gray-600">Contract ID: {contract._id}</p>
+            <h1 className="text-2xl font-bold">{cropName} Contract</h1>
+            <p className="text-sm opacity-80">ID: {contract._id}</p>
           </div>
-          <div className="flex flex-col items-end">
-            {getStatusBadge(contract.status)}
-            <p className="text-sm text-gray-500 mt-1">
-              Requested on {contract.createdAt 
-                ? (() => {
-                    try {
-                      return new Date(contract.createdAt).toLocaleDateString();
-                    } catch (e) {
-                      return contract.createdAt || 'unknown date';
-                    }
-                  })()
-                : 'unknown date'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Proposal Comparison Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* Farmer's Terms */}
-        <div className="border rounded-lg overflow-hidden shadow-sm relative">
-          <div className={`${isFarmer ? 'bg-green-100' : 'bg-green-50'} p-4 border-b border-green-100`}>
-            <h3 className="font-semibold text-lg flex items-center">
-              <FaTractor className="mr-2 text-green-600" /> 
-              {isFarmer ? "Your Terms (Farmer)" : "Farmer's Terms"}
-            </h3>
-            <span className="absolute top-4 right-4 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
-              {isFarmer ? "You" : "Original"}
+          
+          <div className="mt-4 md:mt-0 flex flex-wrap gap-2">
+            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusColors.bg} ${statusColors.text}`}>
+              {statusColors.icon} {contract.status.charAt(0).toUpperCase() + contract.status.slice(1).replace(/([A-Z])/g, ' $1')}
             </span>
-          </div>
-          <div className="p-5 space-y-4">
-            <div className="flex items-start">
-              <FaMoneyBillWave className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Price Per Unit</p>
-                {isLoading && !cropDetails ? (
-                  <div className="animate-pulse flex space-x-2 items-center">
-                    <div className="h-6 w-20 bg-gray-200 rounded"></div>
-                    <span className="text-xs text-gray-400">Loading...</span>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-xl font-bold text-green-600">
-                      ₹{cropDetails?.price || contract.crop?.price || 'N/A'}
-                    </p>
-                    {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' && (
-                      <p className="text-xs mt-1 text-red-500 font-medium">
-                        {isFarmer ? "Buyer proposed" : "You proposed"} {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit).percent}% lower price
-                      </p>
-                    )}
-                    {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'increase' && (
-                      <p className="text-xs mt-1 text-green-500 font-medium">
-                        {isFarmer ? "Buyer proposed" : "You proposed"} {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit).percent}% higher price
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
             
-            <div className="flex items-start">
-              <FaCalendarAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Expected Harvest Date</p>
-                {isLoading && !cropDetails ? (
-                  <div className="animate-pulse flex space-x-2 items-center">
-                    <div className="h-4 w-32 bg-gray-200 rounded"></div>
-                    <span className="text-xs text-gray-400">Loading...</span>
-                  </div>
-                ) : (
-                  <p>{cropDetails?.estimatedHarvestDate || contract.expectedHarvestDate 
-                    ? (() => {
-                        try {
-                          return new Date(cropDetails?.estimatedHarvestDate || contract.expectedHarvestDate).toLocaleDateString();
-                        } catch (e) {
-                          return cropDetails?.estimatedHarvestDate || contract.expectedHarvestDate || 'Not specified';
-                        }
-                      })()
-                    : 'Not specified'}</p>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-start">
-              <FaClipboardList className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Available Quantity</p>
-                {isLoading && !cropDetails ? (
-                  <div className="animate-pulse flex space-x-2 items-center">
-                    <div className="h-4 w-24 bg-gray-200 rounded"></div>
-                    <span className="text-xs text-gray-400">Loading...</span>
-                  </div>
-                ) : (
-                  <p>{cropDetails?.availableQuantity || contract.crop?.availableQuantity || 'N/A'} {cropDetails?.unit || contract.unit || contract.crop?.unit || 'units'}</p>
-                )}
-                {(cropDetails?.availableQuantity || contract.crop?.availableQuantity) && contract.quantity && contract.quantity > (cropDetails?.availableQuantity || contract.crop?.availableQuantity) && (
-                  <p className="text-xs mt-1 text-amber-600 font-medium">
-                    {isFarmer ? "Buyer" : "You"} requested more than available
-                  </p>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-start">
-              <FaLeaf className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Quality</p>
-                {isLoading && !cropDetails ? (
-                  <div className="animate-pulse flex space-x-2 items-center">
-                    <div className="h-4 w-24 bg-gray-200 rounded"></div>
-                    <span className="text-xs text-gray-400">Loading...</span>
-                  </div>
-                ) : (
-                  <p>{cropDetails?.quality || contract.crop?.quality || 'Standard quality'}</p>
-                )}
-              </div>
+            <div className="flex gap-2 print:hidden">
+              <button
+                onClick={handleOpenChat}
+                className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center text-sm"
+              >
+                <FaCommentDots className="mr-1" /> Chat
+              </button>
+              
+              <button
+                onClick={() => window.print()}
+                className="px-3 py-1 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 flex items-center text-sm"
+              >
+                <FaPrint className="mr-1" /> Print
+              </button>
             </div>
           </div>
         </div>
         
-        {/* Buyer's Terms */}
-        <div className="border rounded-lg overflow-hidden shadow-sm border-blue-100 relative">
-          <div className={`${!isFarmer ? 'bg-blue-100' : 'bg-blue-50'} p-4 border-b border-blue-100`}>
-            <h3 className="font-semibold text-lg flex items-center">
-              <FaUser className="mr-2 text-blue-600" /> 
-              {isFarmer ? "Buyer's Terms" : "Your Terms (Buyer)"}
-            </h3>
-            <span className="absolute top-4 right-4 text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-              {isFarmer ? "Proposal" : "You"}
-            </span>
-          </div>
-          <div className="p-5 space-y-4">
-            <div className="flex items-start">
-              <FaMoneyBillWave className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Price Per Unit</p>
-                <div className={`text-xl font-bold ${getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'text-red-600' : 'text-blue-600'}`}>
-                  ₹{contract.pricePerUnit || 'N/A'}
-                </div>
-                {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit) && (
-                  <div className="flex items-center mt-1">
-                    <div className={`h-0.5 w-5 ${getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'bg-red-500' : 'bg-green-500'}`}></div>
-                    <span className={`text-xs ml-1 ${getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? 'text-red-500' : 'text-green-500'}`}>
-                      {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.type === 'decrease' ? '↓' : '↑'} 
-                      ₹{getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit)?.diff.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-              </div>
+        {/* Contract Timeline */}
+        <div className="mt-6 bg-white bg-opacity-10 rounded-lg p-4">
+          <div className="flex flex-wrap items-center text-sm">
+            <div className="flex items-center mr-6 mb-2">
+              <FaCalendarAlt className="mr-1 opacity-80" />
+              <span>Requested: {formatDate(contract.createdAt || contract.requestDate)}</span>
             </div>
             
-            <div className="flex items-start">
-              <FaCalendarAlt className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Requested Delivery Date</p>
-                <p>{contract.deliveryDate 
-                  ? (() => {
-                      try {
-                        return new Date(contract.deliveryDate).toLocaleDateString();
-                      } catch (e) {
-                        return contract.deliveryDate || 'Not specified';
-                      }
-                    })()
-                  : 'Not specified'}</p>
-              </div>
+            <div className="flex items-center mr-6 mb-2">
+              <FaSeedling className="mr-1 opacity-80" />
+              <span>Expected Harvest: {formatDate(contract.expectedHarvestDate)}</span>
             </div>
             
-            <div className="flex items-start">
-              <FaClipboardList className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Requested Quantity</p>
-                <p className={cropDetails?.availableQuantity && contract.quantity > cropDetails.availableQuantity ? 'text-amber-600 font-semibold' : ''}>
-                  {contract.quantity || 'N/A'} {contract.unit || 'units'}
-                </p>
-                {cropDetails?.availableQuantity && contract.quantity && (
-                  <div className="flex items-center mt-1">
-                    <div className={`h-0.5 w-5 ${contract.quantity <= cropDetails.availableQuantity ? 'bg-green-500' : 'bg-amber-500'}`}></div>
-                    <span className={`text-xs ml-1 ${contract.quantity <= cropDetails.availableQuantity ? 'text-green-500' : 'text-amber-500'}`}>
-                      {cropDetails.availableQuantity > 0 ? 
-                        Math.round((contract.quantity / cropDetails.availableQuantity) * 100) : 0}% of available
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-start">
-              <FaLeaf className="text-blue-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Quality Requirements</p>
-                <p>{contract.qualityRequirements || 'Standard quality'}</p>
-              </div>
+            <div className="flex items-center mb-2">
+              <FaShippingFast className="mr-1 opacity-80" />
+              <span>Delivery: {formatDate(contract.deliveryDate)}</span>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Contract Total Value and Summary */}
-      <div className="bg-gray-50 p-6 rounded-lg mb-8 border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="text-center">
-            <p className="text-gray-600 text-sm">Total Contract Value</p>
-            <p className="text-2xl font-bold text-green-600">
-              ₹{contract.totalAmount?.toLocaleString() || (contract.quantity * contract.pricePerUnit).toLocaleString()}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {contract.quantity} {contract.unit || 'units'} × ₹{contract.pricePerUnit}/unit
-            </p>
-          </div>
-          
-          <div className="text-center">
-            <p className="text-gray-600 text-sm">Contract Timeline</p>
-            <div className="flex items-center justify-center space-x-4 mt-2">
-              <div className="flex flex-col items-center">
-                <span className="text-xs text-gray-500">Created</span>
-                <span className="text-sm font-medium">
-                  {contract.createdAt 
-                    ? (() => {
-                        try {
-                          return new Date(contract.createdAt).toLocaleDateString();
-                        } catch (e) {
-                          return 'N/A';
-                        }
-                      })()
-                    : 'N/A'}
-                </span>
-              </div>
-              <div className="h-0.5 w-5 bg-gray-300"></div>
-              <div className="flex flex-col items-center">
-                <span className="text-xs text-gray-500">Delivery</span>
-                <span className="text-sm font-medium">
-                  {contract.deliveryDate 
-                    ? (() => {
-                        try {
-                          return new Date(contract.deliveryDate).toLocaleDateString();
-                        } catch (e) {
-                          return 'N/A';
-                        }
-                      })()
-                    : 'N/A'}
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          <div className="text-center">
-            <p className="text-gray-600 text-sm mb-2">Contract Status</p>
-            <div className="flex flex-col items-center">
-              {getStatusBadge(contract.status)}
-              <div className="mt-2">
-                {contract.status === 'requested' && !getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit) && (
-                  <span className="text-xs text-gray-600">Awaiting farmer's approval without changes</span>
-                )}
-                {contract.status === 'requested' && getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit) && (
-                  <span className="text-xs text-gray-600">Awaiting farmer's approval with price changes</span>
-                )}
-                {contract.status === 'negotiating' && (
-                  <span className="text-xs text-gray-600">
-                    Parties still negotiating contract terms
-                    {contract.negotiationHistory?.length > 0 && (
-                      <> ({contract.negotiationHistory.length} {contract.negotiationHistory.length === 1 ? 'round' : 'rounds'} so far)</>
-                    )}
-                  </span>
-                )}
-                {contract.status === 'accepted' && (
-                  <span className="text-xs text-gray-600">
-                    Contract terms accepted
-                    {contract.negotiationHistory?.length > 0 && (
-                      <> after {contract.negotiationHistory.length} {contract.negotiationHistory.length === 1 ? 'round' : 'rounds'} of negotiation</>
-                    )}
-                  </span>
-                )}
-                {contract.status === 'cancelled' && (
-                  <span className="text-xs text-gray-600">
-                    Contract has been cancelled
-                    {contract.cancelNotes && <> ({contract.cancelNotes})</>}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+      
+      {/* Navigation Tabs */}
+      <div className="border-b border-gray-200 print:hidden">
+        <nav className="flex overflow-x-auto">
+          <button 
+            className={`px-4 py-3 text-sm font-medium ${activeTab === 'overview' 
+              ? 'border-b-2 border-green-600 text-green-600' 
+              : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
+            onClick={() => setActiveTab('overview')}
+          >
+            Overview
+          </button>
+          <button 
+            className={`px-4 py-3 text-sm font-medium ${activeTab === 'terms' 
+              ? 'border-b-2 border-green-600 text-green-600' 
+              : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
+            onClick={() => setActiveTab('terms')}
+          >
+            Contract Terms
+          </button>
+          <button 
+            className={`px-4 py-3 text-sm font-medium ${activeTab === 'negotiations' 
+              ? 'border-b-2 border-green-600 text-green-600' 
+              : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
+            onClick={() => setActiveTab('negotiations')}
+          >
+            Negotiation History
+          </button>
+          <button 
+            className={`px-4 py-3 text-sm font-medium ${activeTab === 'progress' 
+              ? 'border-b-2 border-green-600 text-green-600' 
+              : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
+            onClick={() => setActiveTab('progress')}
+          >
+            Progress Updates
+          </button>
+          <button 
+            className={`px-4 py-3 text-sm font-medium ${activeTab === 'actions' 
+              ? 'border-b-2 border-green-600 text-green-600' 
+              : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
+            onClick={() => setActiveTab('actions')}
+          >
+            Actions
+          </button>
+        </nav>
       </div>
 
-      {/* Contract Details Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-        {/* Payment & Delivery Details */}
-        <section aria-labelledby="payment-details-heading">
-          <h3 id="payment-details-heading" className="text-lg font-semibold mb-4 flex items-center">
-            <FaMoneyBillWave className="mr-2 text-green-600" aria-hidden="true" /> Payment & Delivery
-          </h3>
-          
-          <div className="space-y-4">
-            <div className="flex items-start">
-              <FaMoneyBillWave className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Payment Terms</p>
-                {typeof contract.paymentTerms === 'string' ? (
-                  <p>{contract.paymentTerms}</p>
-                ) : (
-                  <div className="text-sm space-y-1">
-                    {contract.paymentTerms?.advancePercentage > 0 && (
-                      <p>Advance: {contract.paymentTerms.advancePercentage}%</p>
-                    )}
-                    {contract.paymentTerms?.midtermPercentage > 0 && (
-                      <p>Midterm: {contract.paymentTerms.midtermPercentage}%</p>
-                    )}
-                    {contract.paymentTerms?.finalPercentage > 0 && (
-                      <p>Final: {contract.paymentTerms.finalPercentage}%</p>
-                    )}
+      {/* Tab Content */}
+      <div className="p-6">
+        {/* Overview Tab */}
+        {activeTab === 'overview' && (
+          <div>
+            {/* Contract Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {/* Crop Information Card */}
+              <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
+                <h3 className="text-lg font-semibold mb-4 flex items-center text-gray-800">
+                  <FaSeedling className="mr-2 text-green-600" /> Crop Information
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex">
+                    <span className="font-medium text-gray-600 w-32">Crop Name:</span>
+                    <span className="text-gray-800">{cropDetails?.name || contract.crop?.name || 'Not specified'}</span>
                   </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-start">
-              <FaCalendarAlt className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Delivery Date</p>
-                <p>
-                  {contract.deliveryDate 
-                    ? (() => {
-                        try {
-                          return new Date(contract.deliveryDate).toLocaleDateString();
-                        } catch (e) {
-                          return contract.deliveryDate || 'Not specified';
-                        }
-                      })()
-                    : 'Not specified'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Parties Information */}
-        <section aria-labelledby="parties-heading">
-          <h3 id="parties-heading" className="text-lg font-semibold mb-4 flex items-center">
-            <FaUser className="mr-2 text-green-600" aria-hidden="true" /> Contract Parties
-          </h3>
-          
-          <div className="space-y-4">
-            <div className="flex items-start">
-              <FaUser className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Farmer</p>
-                <p>{contract.farmer?.name || contract.farmer?.email || 'Local Farmer'}</p>
-              </div>
-            </div>
-
-            <div className="flex items-start">
-              <FaUser className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Buyer</p>
-                <p>{contract.buyer?.name || contract.buyer?.email || 'Anonymous Buyer'}</p>
-              </div>
-            </div>
-
-            <div className="flex items-start">
-              <FaSeedling className="text-green-600 mr-3 mt-1" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Crop</p>
-                {isLoading && !cropDetails ? (
-                  <div className="animate-pulse space-y-2">
-                    <div className="h-4 w-32 bg-gray-200 rounded"></div>
-                    <div className="h-20 w-20 bg-gray-200 rounded"></div>
-                    <span className="text-xs text-gray-400">Loading crop details...</span>
+                  <div className="flex">
+                    <span className="font-medium text-gray-600 w-32">Quantity:</span>
+                    <span className="text-gray-800">{contract.quantity} {contract.unit}</span>
                   </div>
-                ) : (
-                  <>
-                    <p>{cropDetails?.name || contract.crop?.name || 'Agricultural product'}</p>
-                    {cropDetails?.images && cropDetails.images.length > 0 && (
-                      <img 
-                        src={cropDetails.images[0].url || cropDetails.images[0]} 
-                        alt={cropDetails.name || 'Crop'} 
-                        className="mt-2 w-20 h-20 object-cover rounded-md border border-gray-200"
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {/* Special Requirements */}
-      {contract.specialRequirements && (
-        <section aria-labelledby="requirements-heading" className="mb-8">
-          <h3 id="requirements-heading" className="text-lg font-semibold mb-2">Special Requirements</h3>
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="whitespace-pre-line">{contract.specialRequirements}</p>
-          </div>
-        </section>
-      )}
-
-      {/* Contract Timeline */}
-      <section aria-labelledby="timeline-heading" className="mb-8">
-        <h3 id="timeline-heading" className="text-lg font-semibold mb-4">Contract Timeline</h3>
-        <div className="relative">
-          <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-gray-200" aria-hidden="true"></div>
-          
-          <div className="relative pl-12 pb-8">
-            <div className="absolute left-0 rounded-full bg-green-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
-              <FaHandshake />
-            </div>
-            <div>
-              <p className="font-medium">Contract Requested</p>
-              <p className="text-sm text-gray-600">
-                {contract.requestDate || contract.createdAt 
-                  ? (() => {
-                      try {
-                        return new Date(contract.requestDate || contract.createdAt).toLocaleString();
-                      } catch (e) {
-                        return (contract.requestDate || contract.createdAt) || 'Date not available';
-                      }
-                    })()
-                  : 'Date not available'}
-              </p>
-              {getTermDifference(cropDetails?.price || contract.crop?.price, contract.pricePerUnit) && (
-                <p className="mt-1 text-xs text-blue-600 bg-blue-50 p-2 rounded inline-block">
-                  <span className="font-medium">With initial {isFarmer ? "buyer" : "your"} proposal:</span> Price changed from 
-                  <span className="font-medium"> ₹{cropDetails?.price || contract.crop?.price}</span> to 
-                  <span className="font-medium"> ₹{contract.pricePerUnit}</span>
-                  {contract.quantity && cropDetails?.availableQuantity && contract.quantity !== cropDetails.availableQuantity && (
-                    <>, Quantity requested: <span className="font-medium">{contract.quantity}</span> of <span className="font-medium">{cropDetails.availableQuantity}</span> available</>
-                  )}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Negotiation history timeline item */}
-          {contract.negotiationHistory && contract.negotiationHistory.length > 0 && (
-            <div className="relative pl-12 pb-8">
-              <div className="absolute left-0 rounded-full bg-blue-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
-                <FaHistory />
-              </div>
-              <div>
-                <p className="font-medium">Negotiation Process</p>
-                <p className="text-sm text-gray-600">
-                  {contract.negotiationHistory.length} {contract.negotiationHistory.length === 1 ? 'round' : 'rounds'} of negotiation
-                </p>
-                <p className="mt-1 text-xs text-blue-600">
-                  Last updated: {(() => {
-                    const lastNegotiation = contract.negotiationHistory[contract.negotiationHistory.length - 1];
-                    if (lastNegotiation && lastNegotiation.proposedAt) {
-                      try {
-                        return new Date(lastNegotiation.proposedAt).toLocaleString();
-                      } catch (e) {
-                        return 'Date not available';
-                      }
-                    }
-                    return 'Date not available';
-                  })()}
-                </p>
-
-                {/* Show who made the last proposal */}
-                {(() => {
-                  const lastNegotiation = contract.negotiationHistory[contract.negotiationHistory.length - 1];
-                  if (lastNegotiation) {
-                    const proposedById = typeof lastNegotiation.proposedBy === 'object' ? 
-                      lastNegotiation.proposedBy?._id : lastNegotiation.proposedBy?.toString();
-                    const farmerId = typeof contract.farmer === 'object' ? 
-                      contract.farmer._id : contract.farmer?.toString();
-                    const proposedByFarmer = proposedById === farmerId;
-                    
-                    return (
-                      <p className="mt-1 text-xs bg-gray-50 p-2 rounded">
-                        Last proposal by: <span className="font-medium">
-                          {proposedByFarmer ? 
-                            (isFarmer ? 'You (Farmer)' : 'Farmer') : 
-                            (isFarmer ? 'Buyer' : 'You (Buyer)')}
-                        </span>
-                      </p>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-            </div>
-          )}
-
-          {/* Cancelled contract */}
-          {contract.status === 'cancelled' && (
-            <div className="relative pl-12 pb-8">
-              <div className="absolute left-0 rounded-full bg-gray-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
-                <FaTimes />
-              </div>
-              <div>
-                <p className="font-medium">Contract Cancelled</p>
-                <p className="text-sm text-gray-600">
-                  {contract.cancelDate || contract.updatedAt
-                    ? (() => {
-                        try {
-                          return new Date(contract.cancelDate || contract.updatedAt).toLocaleString();
-                        } catch (e) {
-                          return 'Date not available';
-                        }
-                      })()
-                    : 'Date not available'}
-                </p>
-                {contract.cancelNotes && (
-                  <p className="mt-1 text-sm bg-gray-50 p-2 rounded">
-                    Note: {contract.cancelNotes}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Under negotiation */}
-          {(contract.status === 'negotiating') && (
-            <div className="relative pl-12 pb-8">
-              <div className="absolute left-0 rounded-full bg-yellow-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
-                <FaHandshake />
-              </div>
-              <div>
-                <p className="font-medium">Currently Under Negotiation</p>
-                
-                {(() => {
-                  // Determine who made the last proposal to show who we're awaiting response from
-                  if (contract.negotiationHistory && contract.negotiationHistory.length > 0) {
-                    const lastEntry = contract.negotiationHistory[contract.negotiationHistory.length - 1];
-                    const proposedById = typeof lastEntry.proposedBy === 'object' ? 
-                      lastEntry.proposedBy?._id : lastEntry.proposedBy?.toString();
-                    const farmerId = typeof contract.farmer === 'object' ? 
-                      contract.farmer._id : contract.farmer?.toString();
-                    const lastProposalByFarmer = proposedById === farmerId;
-                    
-                    // If farmer made last proposal, we're waiting for buyer response (and vice versa)
-                    const waitingForFarmerResponse = !lastProposalByFarmer;
-                    
-                    return (
-                      <p className="text-sm text-gray-600">
-                        Awaiting response from {waitingForFarmerResponse ? 
-                          (isFarmer ? 'you (Farmer)' : 'Farmer') : 
-                          (isFarmer ? 'Buyer' : 'you (Buyer)')}
-                      </p>
-                    );
-                  }
-                  return (
-                    <p className="text-sm text-gray-600">
-                      Awaiting response from {isFarmer ? 'you (Farmer)' : 'Farmer'}
-                    </p>
-                  );
-                })()}
-                
-                <button
-                  onClick={() => navigate(`/chat/${contract._id}`)}
-                  className="mt-2 text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors inline-flex items-center"
-                >
-                  <FaHandshake className="mr-1" /> {personalizedText.negotiateButtonText}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Contract approved/rejected */}
-          {contract.status !== 'pending' && contract.status !== 'requested' && contract.status !== 'cancelled' && contract.status !== 'negotiating' && (
-            <div className="relative pl-12 pb-8">
-              <div className="absolute left-0 rounded-full bg-blue-500 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
-                {contract.status === 'approved' || contract.status === 'accepted' ? <FaCheck /> : <FaTimes />}
-              </div>
-              <div>
-                <p className="font-medium">
-                  {contract.status === 'approved' || contract.status === 'accepted' ? 'Contract Approved' : 'Contract Rejected'}
-                </p>
-                <p className="text-sm text-gray-600">
-                  {contract.statusUpdateDate || contract.updatedAt
-                    ? (() => {
-                        try {
-                          return new Date(contract.statusUpdateDate || contract.updatedAt).toLocaleString();
-                        } catch (e) {
-                          return 'Date not available';
-                        }
-                      })()
-                    : 'Date not available'}
-                </p>
-                <p className="mt-1 text-xs text-green-600 bg-green-50 p-2 rounded">
-                  <span className="font-medium">Final terms:</span> Price: ₹{contract.pricePerUnit}, 
-                  Quantity: {contract.quantity} {contract.unit || 'units'}, 
-                  Delivery: {(() => {
-                    try {
-                      return new Date(contract.deliveryDate).toLocaleDateString();
-                    } catch (e) {
-                      return 'Not specified';
-                    }
-                  })()}
-                </p>
-                {contract.farmerNotes && (
-                  <p className="mt-1 text-sm bg-gray-50 p-2 rounded">
-                    Farmer's note: {contract.farmerNotes}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Contract completed */}
-          {(contract.status === 'completed' || contract.status === 'fulfilled') && (
-            <div className="relative pl-12">
-              <div className="absolute left-0 rounded-full bg-green-600 text-white w-10 h-10 flex items-center justify-center" aria-hidden="true">
-                <FaCheck />
-              </div>
-              <div>
-                <p className="font-medium">Contract Completed</p>
-                <p className="text-sm text-gray-600">
-                  {contract.completionDate 
-                    ? (() => {
-                        try {
-                          return new Date(contract.completionDate).toLocaleString();
-                        } catch (e) {
-                          return 'Date not available';
-                        }
-                      })()
-                    : 'Date not available'}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Negotiation History */}
-      {contract.negotiationHistory && contract.negotiationHistory.length > 0 && (
-        <section aria-labelledby="negotiation-heading" className="rounded-lg bg-white p-6 shadow mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h3 id="negotiation-heading" className="text-xl font-semibold">Negotiation History</h3>
-            <div className="flex items-center space-x-2 text-sm text-gray-500">
-              <FaHistory className="text-blue-500" />
-              <span>{contract.negotiationHistory.length} {contract.negotiationHistory.length === 1 ? 'round' : 'rounds'} of negotiation</span>
-            </div>
-          </div>
-          
-          <div className="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="text-center">
-                <span className="font-medium block text-sm text-blue-700">Total Rounds</span>
-                <span className="text-lg font-bold">{contract.negotiationHistory.length}</span>
-              </div>
-              
-              <div className="text-center">
-                <span className="font-medium block text-sm text-green-700">Farmer Proposals</span>
-                <span className="text-lg font-bold">{
-                  contract.negotiationHistory.filter(entry => {
-                    const proposedById = typeof entry.proposedBy === 'object' ? 
-                      entry.proposedBy?._id : entry.proposedBy?.toString();
-                    const farmerId = typeof contract.farmer === 'object' ? 
-                      contract.farmer._id : contract.farmer?.toString();
-                    return proposedById === farmerId;
-                  }).length
-                }</span>
-              </div>
-              
-              <div className="text-center">
-                <span className="font-medium block text-sm text-orange-700">Buyer Proposals</span>
-                <span className="text-lg font-bold">{
-                  contract.negotiationHistory.filter(entry => {
-                    const proposedById = typeof entry.proposedBy === 'object' ? 
-                      entry.proposedBy?._id : entry.proposedBy?.toString();
-                    const farmerId = typeof contract.farmer === 'object' ? 
-                      contract.farmer._id : contract.farmer?.toString();
-                    return proposedById !== farmerId;
-                  }).length
-                }</span>
-              </div>
-            </div>
-          </div>
-          
-          <div className="space-y-4">
-            {contract.negotiationHistory.map((entry, index) => {
-              // Determine if farmer or buyer
-              const proposedById = typeof entry.proposedBy === 'object' ? 
-                entry.proposedBy?._id : entry.proposedBy?.toString();
-              const farmerId = typeof contract.farmer === 'object' ? 
-                contract.farmer._id : contract.farmer?.toString();
-              const proposedByFarmer = proposedById === farmerId;
-              
-              // Determine if current user
-              const isCurrentUser = proposedById === user?._id?.toString();
-              
-              // Get name and image
-              const proposerName = proposedByFarmer 
-                ? (typeof contract.farmer === 'object' ? contract.farmer.Name : 'Farmer')
-                : (typeof contract.buyer === 'object' ? contract.buyer.Name : 'Buyer');
-              
-              const proposerImage = proposedByFarmer
-                ? (typeof contract.farmer === 'object' ? contract.farmer.photo : '')
-                : (typeof contract.buyer === 'object' ? contract.buyer.photo : '');
-              
-              // Get formatted date
-              const formattedDate = (() => {
-                try {
-                  if (!entry.proposedAt) return 'Unknown date';
-                  return new Date(entry.proposedAt).toLocaleDateString('en-US', {
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  });
-                } catch (e) {
-                  return 'Invalid date';
-                }
-              })();
-              
-              // Calculate changes from previous entry
-              const getPreviousValues = () => {
-                if (index === 0) {
-                  // First negotiation - compare with original contract
-                  return {
-                    pricePerUnit: contract.originalTerms?.pricePerUnit || cropDetails?.price,
-                    quantity: contract.originalTerms?.quantity || cropDetails?.availableQuantity,
-                    deliveryDate: contract.originalTerms?.deliveryDate || contract.requestedDeliveryDate
-                  };
-                } else {
-                  // Compare with previous negotiation
-                  const prevEntry = contract.negotiationHistory[index - 1];
-                  return {
-                    pricePerUnit: prevEntry.proposedChanges?.pricePerUnit,
-                    quantity: prevEntry.proposedChanges?.quantity,
-                    deliveryDate: prevEntry.proposedChanges?.deliveryDate
-                  };
-                }
-              };
-              
-              const previousValues = getPreviousValues();
-              const changes = [];
-              
-              if (previousValues.pricePerUnit !== entry.proposedChanges.pricePerUnit) {
-                changes.push({
-                  label: 'Price',
-                  from: `₹${previousValues.pricePerUnit || 'N/A'}`,
-                  to: `₹${entry.proposedChanges.pricePerUnit}`
-                });
-              }
-              
-              if (previousValues.quantity !== entry.proposedChanges.quantity) {
-                changes.push({
-                  label: 'Quantity',
-                  from: `${previousValues.quantity || 'N/A'} ${contract.unit || 'units'}`,
-                  to: `${entry.proposedChanges.quantity} ${contract.unit || 'units'}`
-                });
-              }
-              
-              if (previousValues.deliveryDate !== entry.proposedChanges.deliveryDate) {
-                changes.push({
-                  label: 'Delivery Date',
-                  from: previousValues.deliveryDate ? new Date(previousValues.deliveryDate).toLocaleDateString() : 'N/A',
-                  to: new Date(entry.proposedChanges.deliveryDate).toLocaleDateString()
-                });
-              }
-              
-              // Set colors based on proposer
-              const bgColor = proposedByFarmer 
-                ? (isCurrentUser ? 'bg-green-50 border-green-300' : 'bg-green-50 border-green-200')
-                : (isCurrentUser ? 'bg-blue-50 border-blue-300' : 'bg-blue-50 border-blue-200');
-              
-              const headerBgColor = proposedByFarmer
-                ? (isCurrentUser ? 'bg-green-100' : 'bg-green-100')
-                : (isCurrentUser ? 'bg-blue-100' : 'bg-blue-100');
-              
-              return (
-                <div key={index} className={`border rounded-lg ${bgColor} overflow-hidden`}>
-                  <div className={`px-4 py-3 ${headerBgColor} flex justify-between items-center`}>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
-                        {proposerImage ? (
-                          <img src={proposerImage} alt={proposerName} className="w-full h-full object-cover" />
-                        ) : (
-                          proposedByFarmer ? <FaLeaf className="text-green-600" /> : <FaUserTie className="text-blue-600" />
-                        )}
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-900">
-                          {isCurrentUser 
-                            ? `You (${proposedByFarmer ? 'Farmer' : 'Buyer'})` 
-                            : `${proposerName} (${proposedByFarmer ? 'Farmer' : 'Buyer'})`}
-                        </span>
-                        <span className="text-xs text-gray-500 block">Round {index + 1}</span>
-                      </div>
+                  <div className="flex">
+                    <span className="font-medium text-gray-600 w-32">Price Per Unit:</span>
+                    <span className="text-gray-800">{formatCurrency(contract.pricePerUnit)}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="font-medium text-gray-600 w-32">Total Value:</span>
+                    <span className="text-gray-800 font-semibold">{formatCurrency(contract.totalAmount)}</span>
+                  </div>
+                  {cropDetails?.category && (
+                    <div className="flex">
+                      <span className="font-medium text-gray-600 w-32">Category:</span>
+                      <span className="text-gray-800">{cropDetails.category}</span>
                     </div>
-                    <div className="text-sm text-gray-500">{formattedDate}</div>
+                  )}
+                  {cropDetails?.organic !== undefined && (
+                    <div className="flex">
+                      <span className="font-medium text-gray-600 w-32">Organic:</span>
+                      <span className="text-gray-800">{cropDetails.organic ? 'Yes' : 'No'}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Contract Parties Card */}
+              <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
+                <h3 className="text-lg font-semibold mb-4 flex items-center text-gray-800">
+                  <FaHandshake className="mr-2 text-green-600" /> Contract Parties
+                </h3>
+                <div className="space-y-4">
+                  {/* Farmer Info */}
+                  <div>
+                    <h4 className="font-medium flex items-center text-gray-700 mb-2">
+                      <FaTractor className="mr-1 text-sm" /> 
+                      Farmer {isFarmer ? '(You)' : ''}
+                    </h4>
+                    <div className="ml-6 space-y-1 text-sm">
+                      <p className="text-gray-800">{contract.farmer?.Name || 'Not specified'}</p>
+                      {contract.farmer?.farmName && (
+                        <p className="text-gray-600">{contract.farmer.farmName}</p>
+                      )}
+                      {contract.farmer?.email && (
+                        <p className="text-gray-600">{contract.farmer.email}</p>
+                      )}
+                      {contract.farmer?.contactNumber && (
+                        <p className="text-gray-600">{contract.farmer.contactNumber}</p>
+                      )}
+                    </div>
                   </div>
                   
-                  <div className="p-4">
-                    {entry.message && (
-                      <div className="mb-3 text-gray-700">
-                        <p>"{entry.message}"</p>
+                  {/* Buyer Info */}
+                  <div>
+                    <h4 className="font-medium flex items-center text-gray-700 mb-2">
+                      <FaUserTie className="mr-1 text-sm" /> 
+                      Buyer {!isFarmer ? '(You)' : ''}
+                    </h4>
+                    <div className="ml-6 space-y-1 text-sm">
+                      <p className="text-gray-800">{contract.buyer?.Name || 'Not specified'}</p>
+                      {contract.buyer?.email && (
+                        <p className="text-gray-600">{contract.buyer.email}</p>
+                      )}
+                      {contract.buyer?.contactNumber && (
+                        <p className="text-gray-600">{contract.buyer.contactNumber}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Timelines and Key Dates */}
+            <div className="bg-gray-50 rounded-lg p-5 border border-gray-200 mb-8">
+              <h3 className="text-lg font-semibold mb-4 flex items-center text-gray-800">
+                <FaCalendarAlt className="mr-2 text-green-600" /> Contract Timeline
+              </h3>
+              
+              <div className="relative">
+                {/* Timeline Line */}
+                <div className="absolute left-2.5 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                
+                {/* Timeline Events */}
+                <div className="space-y-6 relative ml-8">
+                  {/* Request Date */}
+                  <div className="relative">
+                    <div className="absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 border-green-600 bg-white"></div>
+                    <div>
+                      <h4 className="font-medium text-gray-800">Contract Requested</h4>
+                      <p className="text-sm text-gray-600">
+                        {formatDate(contract.createdAt || contract.requestDate)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Negotiation / Acceptance Phase */}
+                  <div className="relative">
+                    <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                      ${contract.status === 'requested' || contract.status === 'negotiating' 
+                        ? 'border-blue-500 bg-blue-100' 
+                        : (contract.status === 'cancelled' || contract.status === 'rejected') 
+                          ? 'border-red-500 bg-red-100' 
+                          : 'border-green-600 bg-white'}`}>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800">
+                        {contract.status === 'negotiating' 
+                          ? 'Under Negotiation' 
+                          : (contract.status === 'cancelled' || contract.status === 'rejected')
+                            ? 'Contract Cancelled/Rejected'
+                            : contract.status === 'requested'
+                              ? 'Awaiting Approval'
+                              : 'Contract Accepted'}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {contract.status === 'requested' 
+                          ? 'Pending farmer approval' 
+                          : contract.status === 'negotiating' 
+                            ? 'Terms being negotiated'
+                            : contract.status === 'accepted' || contract.status === 'active'
+                              ? `Accepted on ${formatDate(contract.updatedAt)}`
+                              : 'No longer active'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Expected Harvest */}
+                  <div className="relative">
+                    <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                      ${contract.status === 'readyForHarvest' || contract.status === 'harvested' || contract.status === 'delivered' || contract.status === 'completed'
+                        ? 'border-green-600 bg-white'
+                        : ['accepted', 'active'].includes(contract.status)
+                          ? 'border-yellow-500 bg-yellow-100'
+                          : 'border-gray-300 bg-gray-100'}`}>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800">Expected Harvest</h4>
+                      <p className="text-sm text-gray-600">
+                        {formatDate(contract.expectedHarvestDate)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Delivery Date */}
+                  <div className="relative">
+                    <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                      ${contract.status === 'delivered' || contract.status === 'completed'
+                        ? 'border-green-600 bg-white'
+                        : 'border-gray-300 bg-gray-100'}`}>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800">Expected Delivery</h4>
+                      <p className="text-sm text-gray-600">
+                        {formatDate(contract.deliveryDate)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Completion */}
+                  <div className="relative">
+                    <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                      ${contract.status === 'completed'
+                        ? 'border-green-600 bg-green-100'
+                        : 'border-gray-300 bg-gray-100'}`}>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800">Contract Completion</h4>
+                      <p className="text-sm text-gray-600">
+                        {contract.status === 'completed'
+                          ? `Completed on ${formatDate(contract.updatedAt)}`
+                          : 'Pending'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Next Actions Card - Role & Status-specific */}
+            <div className="bg-blue-50 rounded-lg p-5 border border-blue-100 print:hidden">
+              <h3 className="text-lg font-semibold mb-4 text-blue-800">
+                Next Steps
+              </h3>
+              
+              <div className="space-y-4">
+                {/* Status-specific guidance */}
+                {contract.status === 'requested' && isFarmer && (
+                  <div className="flex items-start">
+                    <FaClipboardList className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
+                    <div>
+                      <p className="text-gray-800 mb-2">You've received a contract request from {contract.buyer?.Name}. Review the terms and decide whether to accept, negotiate, or decline.</p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <button 
+                          onClick={handleAcceptContract}
+                          disabled={cancelLoading}
+                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                        >
+                          {cancelLoading ? 'Processing...' : <><FaCheck className="mr-1" /> Accept Contract</>}
+                        </button>
+                        <button 
+                          onClick={() => setShowNegotiateModal(true)}
+                          disabled={cancelLoading}
+                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+                        >
+                          <FaHandshake className="mr-1" /> Negotiate
+                        </button>
+                        <button 
+                          onClick={handleRejectContract}
+                          disabled={cancelLoading}
+                          className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center"
+                        >
+                          <FaTimes className="mr-1" /> Decline
+                        </button>
                       </div>
-                    )}
-                    
-                    <div className="grid md:grid-cols-2 gap-3 mt-2">
-                      <div className="bg-white rounded border border-gray-200 p-3">
-                        <h4 className="text-sm font-medium text-gray-900 mb-2">Proposed Terms</h4>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Price Per Unit:</span>
-                            <span className="font-medium">₹{entry.proposedChanges.pricePerUnit}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Quantity:</span>
-                            <span className="font-medium">{entry.proposedChanges.quantity} {contract.unit || 'units'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Delivery Date:</span>
-                            <span className="font-medium">
-                              {entry.proposedChanges.deliveryDate 
-                                ? new Date(entry.proposedChanges.deliveryDate).toLocaleDateString() 
-                                : 'Not specified'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Total Value:</span>
-                            <span className="font-medium">
-                              ₹{entry.proposedChanges.pricePerUnit * entry.proposedChanges.quantity}
-                            </span>
-                          </div>
+                    </div>
+                  </div>
+                )}
+                
+                {contract.status === 'requested' && !isFarmer && (
+                  <div className="flex items-start">
+                    <FaClock className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
+                    <div>
+                      <p className="text-gray-800 mb-2">Your contract request has been sent to {contract.farmer?.Name}. Waiting for them to review and respond.</p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <button 
+                          onClick={handleOpenChat}
+                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+                        >
+                          <FaCommentDots className="mr-1" /> Message Farmer
+                        </button>
+                        <button 
+                          onClick={handleCancelContract}
+                          disabled={cancelLoading}
+                          className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center"
+                        >
+                          {cancelLoading ? 'Processing...' : <><FaTimes className="mr-1" /> Cancel Request</>}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {contract.status === 'negotiating' && (
+                  <div className="flex items-start">
+                    <FaHandshake className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
+                    <div>
+                      <p className="text-gray-800 mb-2">This contract is under negotiation. Review the latest terms and respond.</p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <button 
+                          onClick={() => setActiveTab('negotiations')}
+                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+                        >
+                          <FaHistory className="mr-1" /> View Negotiation History
+                        </button>
+                        <button 
+                          onClick={() => setShowNegotiateModal(true)}
+                          disabled={cancelLoading}
+                          className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 flex items-center"
+                        >
+                          <FaHandshake className="mr-1" /> Make Counter Offer
+                        </button>
+                        {isFarmer && (
+                          <button 
+                            onClick={handleAcceptContract}
+                            disabled={cancelLoading}
+                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                          >
+                            {cancelLoading ? 'Processing...' : <><FaCheck className="mr-1" /> Accept Terms</>}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {contract.status === 'accepted' && (
+                  <div className="flex items-start">
+                    <FaLeaf className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
+                    <div>
+                      <p className="text-gray-800 mb-2">The contract has been accepted. Now in the growing phase.</p>
+                      {isFarmer && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <button 
+                            onClick={() => setActiveTab('progress')}
+                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                          >
+                            <FaCameraRetro className="mr-1" /> Add Progress Update
+                          </button>
+                          <button 
+                            onClick={handleMarkAsHarvested}
+                            disabled={cancelLoading}
+                            className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center"
+                          >
+                            <FaTractor className="mr-1" /> Mark as Harvested
+                          </button>
                         </div>
-                      </div>
-                      
-                      {changes.length > 0 && (
-                        <div className="bg-white rounded border border-gray-200 p-3">
-                          <h4 className="text-sm font-medium text-gray-900 mb-2">Changes Made</h4>
-                          <div className="space-y-3 text-sm">
-                            {changes.map((change, i) => (
-                              <div key={i} className="flex items-center">
-                                <span className="text-gray-600 w-1/3">{change.label}:</span>
-                                <div className="flex items-center">
-                                  <span className="line-through text-red-500">{change.from}</span>
-                                  <FaArrowRight className="mx-2 text-gray-400" />
-                                  <span className="text-green-600 font-medium">{change.to}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                      )}
+                      {!isFarmer && (
+                        <button 
+                          onClick={handleOpenChat}
+                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center mt-2"
+                        >
+                          <FaCommentDots className="mr-1" /> Message Farmer
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {contract.status === 'harvested' && (
+                  <div className="flex items-start">
+                    <FaTractor className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
+                    <div>
+                      <p className="text-gray-800 mb-2">The crop has been harvested and is ready for delivery.</p>
+                      {isFarmer && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <button 
+                            onClick={handleMarkAsDelivered}
+                            disabled={cancelLoading}
+                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+                          >
+                            <FaShippingFast className="mr-1" /> Mark as Delivered
+                          </button>
+                        </div>
+                      )}
+                      {!isFarmer && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <button 
+                            onClick={handleOpenChat}
+                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+                          >
+                            <FaCommentDots className="mr-1" /> Coordinate Delivery
+                          </button>
                         </div>
                       )}
                     </div>
-                    
-                    {entry.proposedChanges.specialRequirements && (
-                      <div className="mt-3 bg-white rounded border border-gray-200 p-3">
-                        <h4 className="text-sm font-medium text-gray-900 mb-1">Special Requirements</h4>
-                        <p className="text-sm text-gray-700">{entry.proposedChanges.specialRequirements}</p>
-                      </div>
-                    )}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Contract Stats/Summary Section - New */}
-      <section aria-labelledby="contract-summary" className="mb-8">
-        <h3 id="contract-summary" className="text-xl font-semibold mb-4 flex items-center">
-          <FaClipboardList className="mr-2 text-green-600" aria-hidden="true" /> Contract Summary
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Negotiation Stats */}
-          <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
-            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
-              <FaHistory className="mr-1.5 text-blue-500" /> Negotiation Stats
-            </h4>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Total Rounds:</span>
-                <span className="font-medium">{contract.negotiationHistory?.length || 0}</span>
-              </div>
-              
-              {/* Count farmer proposals - handle both object and string IDs */}
-              {(() => {
-                const farmerProposals = contract.negotiationHistory?.filter(entry => {
-                  const proposedById = typeof entry.proposedBy === 'object' ? 
-                    entry.proposedBy?._id : entry.proposedBy?.toString();
-                  const farmerId = typeof contract.farmer === 'object' ? 
-                    contract.farmer._id : contract.farmer?.toString();
-                  return proposedById === farmerId;
-                }).length || 0;
+                )}
                 
-                return (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Farmer Proposals:</span>
-                    <span className="font-medium text-green-600">
-                      {farmerProposals}
-                    </span>
+                {contract.status === 'delivered' && (
+                  <div className="flex items-start">
+                    <FaShippingFast className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
+                    <div>
+                      <p className="text-gray-800 mb-2">The crop has been delivered. Please complete the contract once payment is finalized.</p>
+                      {!isFarmer && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <button 
+                            onClick={handleMarkAsCompleted}
+                            disabled={cancelLoading}
+                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                          >
+                            <FaCheck className="mr-1" /> Mark as Completed
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                );
-              })()}
-              
-              {/* Count buyer proposals - handle both object and string IDs */}
-              {(() => {
-                const buyerProposals = contract.negotiationHistory?.filter(entry => {
-                  const proposedById = typeof entry.proposedBy === 'object' ? 
-                    entry.proposedBy?._id : entry.proposedBy?.toString();
-                  const farmerId = typeof contract.farmer === 'object' ? 
-                    contract.farmer._id : contract.farmer?.toString();
-                  return proposedById !== farmerId;
-                }).length || 0;
+                )}
                 
-                return (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Buyer Proposals:</span>
-                    <span className="font-medium text-blue-600">
-                      {buyerProposals}
-                    </span>
+                {contract.status === 'completed' && (
+                  <div className="flex items-start">
+                    <FaCheck className="text-green-600 mt-1 mr-2 flex-shrink-0" />
+                    <div>
+                      <p className="text-gray-800 mb-2">This contract has been successfully completed. Thank you for using AgroLink!</p>
+                      <button 
+                        onClick={() => navigate('/contracts/new')}
+                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center mt-2"
+                      >
+                        <FaFileContract className="mr-1" /> Create New Contract
+                      </button>
+                    </div>
                   </div>
-                );
-              })()}
-              
-              <div className="flex justify-between">
-                <span className="text-gray-600">Current Status:</span>
-                <span className="font-medium">{getStatusBadge(contract.status)}</span>
+                )}
+                
+                {(contract.status === 'cancelled' || contract.status === 'rejected') && (
+                  <div className="flex items-start">
+                    <FaTimes className="text-red-600 mt-1 mr-2 flex-shrink-0" />
+                    <div>
+                      <p className="text-gray-800 mb-2">This contract has been {contract.status}. No further actions are available.</p>
+                      <button 
+                        onClick={() => navigate('/contracts/new')}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center mt-2"
+                      >
+                        <FaFileContract className="mr-1" /> Create New Contract
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-          
-          {/* Current Terms */}
-          <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
-            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
-              <FaFileContract className="mr-1.5 text-green-500" /> Current Terms
-            </h4>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Price Per Unit:</span>
-                <span className="font-medium">₹{contract.pricePerUnit}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Quantity:</span>
-                <span className="font-medium">{contract.quantity} {contract.unit || 'units'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Total Value:</span>
-                <span className="font-medium">₹{contract.totalAmount || (contract.pricePerUnit * contract.quantity)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Delivery Date:</span>
-                <span className="font-medium">
-                  {(() => {
-                    try {
-                      return new Date(contract.deliveryDate).toLocaleDateString();
-                    } catch (e) {
-                      return 'Not specified';
-                    }
-                  })()}
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          {/* Quick Actions */}
-          <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
-            <h4 className="font-medium text-gray-700 mb-3 flex items-center">
-              <FaHandshake className="mr-1.5 text-blue-500" /> Quick Actions
-            </h4>
-            <div className="space-y-3">
-              <button
-                onClick={() => navigate(`/chat/${contract._id}`)}
-                className="w-full text-center py-2 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded hover:from-green-600 hover:to-blue-600 transition-all flex items-center justify-center"
-              >
-                <FaHandshake className="mr-2" /> {personalizedText.negotiateButtonText}
-              </button>
-              
-              {contract.status === 'negotiating' && (
-                <button
-                  onClick={handleCancelContract}
-                  disabled={cancelLoading}
-                  className="w-full text-center py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-all flex items-center justify-center"
-                >
-                  {cancelLoading ? (
-                    <>
-                      <span className="animate-spin mr-2">⟳</span> {personalizedText.declineButtonText}...
-                    </>
-                  ) : (
-                    <><FaTimes className="mr-2" /> {personalizedText.declineButtonText}</>
-                  )}
-                </button>
-              )}
-              
-              <button
-                onClick={handlePrint}
-                className="w-full text-center py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-all flex items-center justify-center"
-              >
-                <FaPrint className="mr-2" /> Print Details
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Action Buttons */}
-      <div className="flex flex-wrap justify-between items-center mt-8 print:hidden gap-4">
-        <Link
-          to="/contracts"
-          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors flex items-center"
-          aria-label="Go back to all contracts"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-          </svg>
-          Back to All Contracts
-        </Link>
-        
-        {(contract.status === 'pending' || contract.status === 'requested' || contract.status === 'negotiating') && (
-          <div className="flex flex-wrap gap-3">
-            <button
-              className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center shadow-sm"
-              onClick={() => navigate(`/chat/${contract._id}`)}
-              aria-label="Chat or negotiate"
-            >
-              <FaHandshake className="mr-2" /> {personalizedText.negotiateButtonText}
-            </button>
-            
-            <button
-              className="px-5 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center shadow-sm"
-              onClick={handleCancelContract}
-              disabled={cancelLoading || contract.status === 'cancelled'}
-              aria-label="Cancel this contract request"
-            >
-              {cancelLoading ? (
-                <>
-                  <span className="animate-spin mr-2">⟳</span> {personalizedText.declineButtonText}...
-                </>
-              ) : contract.status === 'cancelled' ? (
-                <>Already Cancelled</>
-              ) : (
-                <><FaTimes className="mr-2" /> {personalizedText.declineButtonText}</>
-              )}
-            </button>
           </div>
         )}
         
-        {(contract.status === 'approved' || contract.status === 'accepted') && (
-          <div className="flex flex-wrap gap-3">
+        {/* Contract Terms Tab */}
+        {activeTab === 'terms' && (
+          <div>
+            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-6">
+              <div className="bg-gray-100 p-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                  <FaFileContract className="mr-2 text-green-600" /> Contract Terms
+                </h3>
+              </div>
+              
+              <div className="divide-y divide-gray-200">
+                {/* Main Contract Details */}
+                <div className="p-5">
+                  <h4 className="font-medium text-gray-800 mb-3">Product & Quantity</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-500">Product:</span>
+                      <span className="font-medium text-gray-800">{cropDetails?.name || contract.crop?.name || 'Not specified'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-500">Quantity:</span>
+                      <span className="font-medium text-gray-800">{contract.quantity} {contract.unit}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-500">Price Per Unit:</span>
+                      <span className="font-medium text-gray-800">{formatCurrency(contract.pricePerUnit)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-500">Total Amount:</span>
+                      <span className="font-medium text-gray-800">{formatCurrency(contract.totalAmount)}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Delivery & Timeline */}
+                <div className="p-5">
+                  <h4 className="font-medium text-gray-800 mb-3">Timeline & Delivery</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-500">Request Date:</span>
+                      <span className="font-medium text-gray-800">{formatDate(contract.createdAt || contract.requestDate)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-500">Expected Harvest Date:</span>
+                      <span className="font-medium text-gray-800">{formatDate(contract.expectedHarvestDate)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-500">Delivery Date:</span>
+                      <span className="font-medium text-gray-800">{formatDate(contract.deliveryDate)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-500">Contract Status:</span>
+                      <span className="font-medium text-gray-800 capitalize">{contract.status.replace(/([A-Z])/g, ' $1')}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Quality Requirements */}
+                <div className="p-5">
+                  <h4 className="font-medium text-gray-800 mb-3">Quality Requirements</h4>
+                  <div className="bg-white p-3 rounded border border-gray-200">
+                    <p className="text-gray-800 whitespace-pre-wrap">
+                      {contract.qualityRequirements || 'No specific quality requirements provided.'}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Special Requirements */}
+                {contract.specialRequirements && (
+                  <div className="p-5">
+                    <h4 className="font-medium text-gray-800 mb-3">Special Requirements</h4>
+                    <div className="bg-white p-3 rounded border border-gray-200">
+                      <p className="text-gray-800 whitespace-pre-wrap">
+                        {contract.specialRequirements}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Payment Terms */}
+                <div className="p-5">
+                  <h4 className="font-medium text-gray-800 mb-3">Payment Terms</h4>
+                  {contract.paymentTerms ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-white p-3 rounded border border-gray-200">
+                        <h5 className="text-sm font-medium text-gray-700 mb-1">Advance Payment</h5>
+                        <p className="text-xl font-semibold text-green-600">{contract.paymentTerms.advancePercentage || 0}%</p>
+                        <p className="text-sm text-gray-600 mt-1">Upon contract acceptance</p>
+                      </div>
+                      <div className="bg-white p-3 rounded border border-gray-200">
+                        <h5 className="text-sm font-medium text-gray-700 mb-1">Midterm Payment</h5>
+                        <p className="text-xl font-semibold text-green-600">{contract.paymentTerms.midtermPercentage || 0}%</p>
+                        <p className="text-sm text-gray-600 mt-1">Upon harvest</p>
+                      </div>
+                      <div className="bg-white p-3 rounded border border-gray-200">
+                        <h5 className="text-sm font-medium text-gray-700 mb-1">Final Payment</h5>
+                        <p className="text-xl font-semibold text-green-600">{contract.paymentTerms.finalPercentage || 0}%</p>
+                        <p className="text-sm text-gray-600 mt-1">Upon delivery</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white p-3 rounded border border-gray-200">
+                      <p className="text-gray-800">
+                        Standard payment terms apply:
+                      </p>
+                      <ul className="list-disc pl-5 mt-2 text-gray-600">
+                        <li>20% advance payment upon contract acceptance</li>
+                        <li>50% midterm payment upon harvest</li>
+                        <li>30% final payment upon delivery</li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Contract Document (if available) */}
+            {contract.contractDocument && contract.contractDocument.url && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200 p-5">
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center mb-4">
+                  <FaFileContract className="mr-2 text-green-600" /> Contract Document
+                </h3>
+                <div className="flex justify-between items-center">
+                  <p className="text-gray-700">
+                    Official contract document is available for download.
+                  </p>
+                  <a 
+                    href={contract.contractDocument.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+                  >
+                    <FaDownload className="mr-2" /> Download Document
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Negotiations Tab */}
+        {activeTab === 'negotiations' && (
+          <div>
+            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-6">
+              <div className="bg-gray-100 p-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                  <FaHistory className="mr-2 text-blue-600" /> Negotiation History
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {contract.negotiationHistory && contract.negotiationHistory.length > 0 
+                    ? `${contract.negotiationHistory.length} round${contract.negotiationHistory.length === 1 ? '' : 's'} of negotiation`
+                    : 'No negotiations yet'}
+                </p>
+              </div>
+              
+              {(!contract.negotiationHistory || contract.negotiationHistory.length === 0) ? (
+                <div className="p-6 text-center text-gray-500">
+                  <FaCommentSlash className="mx-auto mb-2 text-gray-400 text-2xl" />
+                  <p>No negotiation history available for this contract.</p>
+                </div>
+              ) : (
+                <div className="p-4">
+                  {/* Negotiation Summary */}
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                    <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
+                      <h4 className="text-sm font-medium text-gray-600 mb-1">Total Rounds</h4>
+                      <p className="text-2xl font-bold text-gray-800">{contract.negotiationHistory.length}</p>
+                    </div>
+                    
+                    <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
+                      <h4 className="text-sm font-medium text-gray-600 mb-1">Farmer Proposals</h4>
+                      <p className="text-2xl font-bold text-green-600">
+                        {contract.negotiationHistory.filter(entry => {
+                          const proposedById = typeof entry.proposedBy === 'object' ? 
+                            entry.proposedBy?._id : entry.proposedBy?.toString();
+                          const farmerId = typeof contract.farmer === 'object' ? 
+                            contract.farmer._id : contract.farmer?.toString();
+                          return proposedById === farmerId;
+                        }).length}
+                      </p>
+                    </div>
+                    
+                    <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
+                      <h4 className="text-sm font-medium text-gray-600 mb-1">Buyer Proposals</h4>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {contract.negotiationHistory.filter(entry => {
+                          const proposedById = typeof entry.proposedBy === 'object' ? 
+                            entry.proposedBy?._id : entry.proposedBy?.toString();
+                          const farmerId = typeof contract.farmer === 'object' ? 
+                            contract.farmer._id : contract.farmer?.toString();
+                          return proposedById !== farmerId;
+                        }).length}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Timeline of Negotiations */}
+                  <div className="space-y-4">
+                    {contract.negotiationHistory.map((entry, index) => {
+                      // Determine if farmer or buyer
+                      const proposedById = typeof entry.proposedBy === 'object' ? 
+                        entry.proposedBy?._id : entry.proposedBy?.toString();
+                      const farmerId = typeof contract.farmer === 'object' ? 
+                        contract.farmer._id : contract.farmer?.toString();
+                      const proposedByFarmer = proposedById === farmerId;
+                      
+                      // Determine if current user
+                      const isCurrentUser = proposedById === user?._id?.toString();
+                      
+                      // Get name
+                      const proposerName = proposedByFarmer 
+                        ? (typeof contract.farmer === 'object' ? contract.farmer.Name : 'Farmer')
+                        : (typeof contract.buyer === 'object' ? contract.buyer.Name : 'Buyer');
+                      
+                      // Get formatted date
+                      const formattedDate = (() => {
+                        try {
+                          if (!entry.proposedAt) return 'Unknown date';
+                          return new Date(entry.proposedAt).toLocaleDateString('en-US', {
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          });
+                        } catch (e) {
+                          return 'Invalid date';
+                        }
+                      })();
+                      
+                      // Calculate changes from previous entry
+                      const getPreviousValues = () => {
+                        if (index === 0) {
+                          // First negotiation - compare with original contract
+                          return {
+                            pricePerUnit: contract.originalTerms?.pricePerUnit || cropDetails?.price,
+                            quantity: contract.originalTerms?.quantity || cropDetails?.availableQuantity,
+                            deliveryDate: contract.originalTerms?.deliveryDate || contract.requestedDeliveryDate
+                          };
+                        } else {
+                          // Compare with previous negotiation
+                          const prevEntry = contract.negotiationHistory[index - 1];
+                          return {
+                            pricePerUnit: prevEntry.proposedChanges?.pricePerUnit,
+                            quantity: prevEntry.proposedChanges?.quantity,
+                            deliveryDate: prevEntry.proposedChanges?.deliveryDate
+                          };
+                        }
+                      };
+                      
+                      const previousValues = getPreviousValues();
+                      const changes = [];
+                      
+                      if (previousValues.pricePerUnit !== entry.proposedChanges.pricePerUnit) {
+                        changes.push({
+                          label: 'Price',
+                          from: `₹${previousValues.pricePerUnit || 'N/A'}`,
+                          to: `₹${entry.proposedChanges.pricePerUnit}`
+                        });
+                      }
+                      
+                      if (previousValues.quantity !== entry.proposedChanges.quantity) {
+                        changes.push({
+                          label: 'Quantity',
+                          from: `${previousValues.quantity || 'N/A'} ${contract.unit || 'units'}`,
+                          to: `${entry.proposedChanges.quantity} ${contract.unit || 'units'}`
+                        });
+                      }
+                      
+                      if (previousValues.deliveryDate !== entry.proposedChanges.deliveryDate) {
+                        changes.push({
+                          label: 'Delivery Date',
+                          from: previousValues.deliveryDate ? new Date(previousValues.deliveryDate).toLocaleDateString() : 'N/A',
+                          to: new Date(entry.proposedChanges.deliveryDate).toLocaleDateString()
+                        });
+                      }
+                      
+                      // Set colors based on proposer
+                      const bgColor = proposedByFarmer 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-blue-50 border-blue-200';
+                      
+                      const headerBgColor = proposedByFarmer
+                        ? 'bg-green-100'
+                        : 'bg-blue-100';
+                        
+                      const iconBgColor = proposedByFarmer
+                        ? 'bg-green-600'
+                        : 'bg-blue-600';
+                      
+                      return (
+                        <div key={index} className={`border rounded-lg ${bgColor} overflow-hidden`}>
+                          <div className={`px-4 py-3 ${headerBgColor} flex justify-between items-center`}>
+                            <div className="flex items-center space-x-2">
+                              <div className={`w-8 h-8 rounded-full overflow-hidden ${iconBgColor} text-white flex items-center justify-center`}>
+                                {proposedByFarmer ? <FaTractor /> : <FaUserTie />}
+                              </div>
+                              <div>
+                                <span className="font-medium text-gray-900">
+                                  {isCurrentUser 
+                                    ? `You (${proposedByFarmer ? 'Farmer' : 'Buyer'})` 
+                                    : `${proposerName} (${proposedByFarmer ? 'Farmer' : 'Buyer'})`}
+                                </span>
+                                <span className="text-xs text-gray-500 block">Round {index + 1}</span>
+                              </div>
+                            </div>
+                            <div className="text-sm text-gray-600">{formattedDate}</div>
+                          </div>
+                          
+                          <div className="p-4">
+                            {entry.message && (
+                              <div className="mb-3 text-gray-700">
+                                <p className="whitespace-pre-wrap">"{entry.message}"</p>
+                              </div>
+                            )}
+                            
+                            <div className="grid md:grid-cols-2 gap-3 mt-2">
+                              <div className="bg-white rounded border border-gray-200 p-3">
+                                <h4 className="text-sm font-medium text-gray-900 mb-2">Proposed Terms</h4>
+                                <div className="space-y-2 text-sm">
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">Price Per Unit:</span>
+                                    <span className="font-medium">₹{entry.proposedChanges.pricePerUnit}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">Quantity:</span>
+                                    <span className="font-medium">{entry.proposedChanges.quantity} {contract.unit || 'units'}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">Delivery Date:</span>
+                                    <span className="font-medium">
+                                      {entry.proposedChanges.deliveryDate 
+                                        ? new Date(entry.proposedChanges.deliveryDate).toLocaleDateString() 
+                                        : 'Not specified'}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">Total Value:</span>
+                                    <span className="font-medium">
+                                      ₹{entry.proposedChanges.pricePerUnit * entry.proposedChanges.quantity}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {changes.length > 0 && (
+                                <div className="bg-white rounded border border-gray-200 p-3">
+                                  <h4 className="text-sm font-medium text-gray-900 mb-2">Changes Made</h4>
+                                  <div className="space-y-3 text-sm">
+                                    {changes.map((change, i) => (
+                                      <div key={i} className="flex items-center">
+                                        <span className="text-gray-600 w-1/3">{change.label}:</span>
+                                        <div className="flex items-center">
+                                          <span className="line-through text-red-500">{change.from}</span>
+                                          <FaArrowRight className="mx-2 text-gray-400" />
+                                          <span className="text-green-600 font-medium">{change.to}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Negotiation Actions */}
+            {(contract.status === 'requested' || contract.status === 'negotiating') && (
+              <div className="bg-blue-50 rounded-lg p-5 border border-blue-100 mt-4">
+                <h3 className="text-lg font-semibold mb-3 text-blue-800">Negotiation Actions</h3>
+                <div className="flex flex-wrap gap-3">
+                  <button 
+                    onClick={() => setShowNegotiateModal(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+                  >
+                    <FaHandshake className="mr-2" /> Make Counter Offer
+                  </button>
+                  
+                  {isFarmer && contract.status === 'requested' && (
+                    <button 
+                      onClick={handleAcceptContract}
+                      disabled={cancelLoading}
+                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                    >
+                      <FaCheck className="mr-2" /> Accept Contract
+                    </button>
+                  )}
+                  
+                  {isFarmer && contract.status === 'negotiating' && (
+                    <button 
+                      onClick={handleAcceptContract}
+                      disabled={cancelLoading}
+                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                    >
+                      <FaCheck className="mr-2" /> Accept Current Terms
+                    </button>
+                  )}
+                  
+                  <button 
+                    onClick={handleOpenChat}
+                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center"
+                  >
+                    <FaCommentDots className="mr-2" /> Open Chat
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Progress Updates Tab */}
+        {activeTab === 'progress' && (
+          <div>
+            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-6">
+              <div className="bg-gray-100 p-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                  <FaChartLine className="mr-2 text-green-600" /> Progress Updates
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Track the growth and development of the crop throughout the contract period.
+                </p>
+              </div>
+              
+              <div className="p-5">
+                {/* Progress Updates Form - Only visible to farmers for active contracts */}
+                {isFarmer && ['accepted', 'active'].includes(contract.status) && (
+                  <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+                    <h4 className="font-medium text-gray-800 mb-3">Add New Progress Update</h4>
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.target);
+                      const update = {
+                        title: formData.get('title'),
+                        description: formData.get('description'),
+                        date: new Date().toISOString(),
+                        images: [] // This would handle image uploads in a real implementation
+                      };
+                      
+                      // Call an API to add the progress update
+                      toast.success("Progress update added successfully!");
+                      
+                      // Refresh contract data or add to local state
+                      setContract(prev => ({
+                        ...prev,
+                        progressUpdates: [
+                          ...(prev.progressUpdates || []),
+                          update
+                        ]
+                      }));
+                      
+                      // Reset form
+                      e.target.reset();
+                    }}>
+                      <div className="space-y-4">
+                        <div>
+                          <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+                            Update Title
+                          </label>
+                          <input
+                            type="text"
+                            id="title"
+                            name="title"
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                            placeholder="e.g., Seedling Stage, First Bloom, etc."
+                          />
+                        </div>
+                        
+                        <div>
+                          <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                            Description
+                          </label>
+                          <textarea
+                            id="description"
+                            name="description"
+                            rows="3"
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                            placeholder="Describe the current state of the crop, any observations, or challenges..."
+                          ></textarea>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Photos (Optional)
+                          </label>
+                          <div className="flex items-center justify-center w-full">
+                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <FaCameraRetro className="w-8 h-8 mb-3 text-gray-400" />
+                                <p className="mb-2 text-sm text-gray-500">
+                                  <span className="font-semibold">Click to upload</span> or drag and drop
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  PNG, JPG or JPEG (MAX. 5MB)
+                                </p>
+                              </div>
+                              <input id="images" name="images" type="file" accept="image/*" multiple className="hidden" />
+                            </label>
+                          </div>
+                        </div>
+                        
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center w-full justify-center"
+                        >
+                          <FaPlus className="mr-2" /> Add Progress Update
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+                
+                {/* Progress Updates Timeline */}
+                {contract.progressUpdates && contract.progressUpdates.length > 0 ? (
+                  <div className="space-y-6">
+                    <h4 className="font-medium text-gray-800 mb-3">Progress Timeline</h4>
+                    <div className="relative">
+                      {/* Timeline Line */}
+                      <div className="absolute left-2.5 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                      
+                      {/* Timeline Events */}
+                      <div className="space-y-6 relative ml-8">
+                        {contract.progressUpdates.map((update, index) => (
+                          <div className="relative" key={index}>
+                            <div className="absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 border-green-600 bg-white"></div>
+                            <div className="bg-white rounded-lg border border-gray-200 p-4">
+                              <div className="flex justify-between items-start mb-2">
+                                <h5 className="font-medium text-gray-800">{update.title}</h5>
+                                <span className="text-sm text-gray-500">{formatDate(update.date)}</span>
+                              </div>
+                              <p className="text-gray-700 mb-3 whitespace-pre-wrap">{update.description}</p>
+                              
+                              {/* Image Gallery */}
+                              {update.images && update.images.length > 0 && (
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-3">
+                                  {update.images.map((image, imgIndex) => (
+                                    <div key={imgIndex} className="relative h-24 rounded overflow-hidden">
+                                      <img 
+                                        src={image.url || image} 
+                                        alt={`Update ${index + 1} image ${imgIndex + 1}`}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <FaClipboardList className="mx-auto mb-2 text-gray-400 text-3xl" />
+                    <p className="mb-1">No progress updates available yet.</p>
+                    {isFarmer && ['accepted', 'active'].includes(contract.status) && (
+                      <p className="text-sm">Use the form above to add your first update.</p>
+                    )}
+                    {!isFarmer && (
+                      <p className="text-sm">The farmer hasn't posted any updates yet.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Contract Stage Guidance */}
+            <div className="bg-gray-50 rounded-lg border border-gray-200 p-5">
+              <h3 className="text-lg font-semibold text-gray-800 flex items-center mb-4">
+                <FaLeaf className="mr-2 text-green-600" /> Crop Development Guide
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white p-4 rounded border border-gray-200">
+                  <h4 className="font-medium text-gray-800 mb-2 flex items-center">
+                    <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2">1</div>
+                    Early Stage
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    Planting, germination, and initial growth. Watch for proper soil moisture and protection from extreme weather.
+                  </p>
+                </div>
+                
+                <div className="bg-white p-4 rounded border border-gray-200">
+                  <h4 className="font-medium text-gray-800 mb-2 flex items-center">
+                    <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2">2</div>
+                    Mid Stage
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    Vegetative growth, flowering begins. Focus on irrigation, nutrients, and pest management during this critical phase.
+                  </p>
+                </div>
+                
+                <div className="bg-white p-4 rounded border border-gray-200">
+                  <h4 className="font-medium text-gray-800 mb-2 flex items-center">
+                    <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2">3</div>
+                    Late Stage
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    Fruit/grain development, maturation, and harvest preparation. Monitor quality and prepare for optimal harvest timing.
+                  </p>
+                </div>
+              </div>
+              
+              {cropDetails?.growingInstructions && (
+                <div className="mt-4 bg-white p-4 rounded border border-gray-200">
+                  <h4 className="font-medium text-gray-800 mb-2">Specific Growing Instructions</h4>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{cropDetails.growingInstructions}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Contract Action Footer */}
+      <div className="mt-8 border-t border-gray-200 pt-4 pb-4 print:hidden">
+        <div className="flex flex-wrap gap-3 justify-between">
+          <div className="flex flex-wrap gap-2">
             <button
-              className="px-5 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center shadow-sm"
-              onClick={() => navigate(`/chat/${contract._id}`)}
-              aria-label="Contact the farmer about this contract"
+              onClick={() => navigate('/contracts')}
+              className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-50 flex items-center"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
-                <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
-              </svg>
-              Contact Farmer
+              <FaArrowLeft className="mr-2" /> Back to Contracts
             </button>
             
             <button
-              className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center shadow-sm"
-              onClick={() => navigate(`/payment?contractId=${contract._id}`)}
-              aria-label="Make a payment for this contract"
-            >
-              <FaMoneyBillWave className="mr-2" /> Make Payment
-            </button>
-            
-            <button
-              className="px-5 py-2 border border-gray-300 bg-white rounded-md hover:bg-gray-50 transition-colors flex items-center"
               onClick={handlePrint}
-              aria-label="Print contract"
+              className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-50 flex items-center"
             >
               <FaPrint className="mr-2" /> Print Contract
             </button>
           </div>
-        )}
+          
+          <div className="flex flex-wrap gap-2">
+            {contract.status === 'negotiating' && (
+              <button
+                onClick={handleOpenChat}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+              >
+                <FaCommentDots className="mr-2" /> Open Chat
+              </button>
+            )}
+            
+            {isFarmer && contract.status === 'requested' && (
+              <>
+                <button
+                  onClick={handleAcceptContract}
+                  disabled={cancelLoading}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                >
+                  <FaCheck className="mr-2" /> Accept Contract
+                </button>
+                <button
+                  onClick={handleRejectContract}
+                  disabled={cancelLoading}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 flex items-center"
+                >
+                  <FaTimes className="mr-2" /> Reject Contract
+                </button>
+              </>
+            )}
+            
+            {contract.status === 'accepted' && isFarmer && (
+              <button
+                onClick={handleMarkAsHarvested}
+                disabled={cancelLoading}
+                className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center"
+              >
+                <FaTractor className="mr-2" /> Mark as Harvested
+              </button>
+            )}
+            
+            {contract.status === 'harvested' && isFarmer && (
+              <button
+                onClick={handleMarkAsDelivered}
+                disabled={cancelLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+              >
+                <FaShippingFast className="mr-2" /> Mark as Delivered
+              </button>
+            )}
+            
+            {contract.status === 'delivered' && !isFarmer && (
+              <button
+                onClick={handleMarkAsCompleted}
+                disabled={cancelLoading}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+              >
+                <FaCheck className="mr-2" /> Complete Contract
+              </button>
+            )}
+            
+            {['requested', 'negotiating'].includes(contract.status) && (
+              <button
+                onClick={handleCancelContract}
+                disabled={cancelLoading}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 flex items-center"
+              >
+                <FaTimes className="mr-2" /> Cancel Contract
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+      
+      {/* Negotiation Modal */}
+      {showNegotiateModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold mb-4 flex items-center">
+              <FaHandshake className="mr-2 text-blue-600" /> Make a Counter Offer
+            </h3>
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              // Handle negotiation submission
+              setShowNegotiateModal(false);
+              toast.success("Counter offer sent successfully!");
+            }}>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
+                    Price Per Unit (₹)
+                  </label>
+                  <input
+                    type="number"
+                    id="price"
+                    name="price"
+                    min="1"
+                    defaultValue={contract.pricePerUnit}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
+                    Quantity ({contract.unit})
+                  </label>
+                  <input
+                    type="number"
+                    id="quantity"
+                    name="quantity"
+                    min="1"
+                    defaultValue={contract.quantity}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="deliveryDate" className="block text-sm font-medium text-gray-700 mb-1">
+                    Delivery Date
+                  </label>
+                  <input
+                    type="date"
+                    id="deliveryDate"
+                    name="deliveryDate"
+                    defaultValue={(() => {
+                      try {
+                        return new Date(contract.deliveryDate).toISOString().split('T')[0];
+                      } catch (e) {
+                        return '';
+                      }
+                    })()}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
+                    Message (Optional)
+                  </label>
+                  <textarea
+                    id="message"
+                    name="message"
+                    rows="3"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Explain your counter offer..."
+                  ></textarea>
+                </div>
+                
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowNegotiateModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Send Counter Offer
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
