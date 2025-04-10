@@ -11,12 +11,13 @@ import {
   FaCheck, FaTimes, FaClock, FaUser, FaMapMarkerAlt, FaSeedling, FaLeaf, 
   FaClipboardList, FaDownload, FaPrint, FaExclamationTriangle, FaHistory, FaArrowRight,
   FaUserTie, FaChartLine, FaCannon, FaShippingFast, FaWarehouse, FaTruckLoading, FaCommentDots, FaCommentSlash, FaPlus, FaArrowLeft,
-  FaCameraRetro
+  FaCameraRetro, FaExpand, FaCheckCircle
 } from 'react-icons/fa';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
 import { api } from '../../services/api';
 import { contractService } from '../../services/contractService';
+import { formatDistanceToNow } from 'date-fns';
 
 const ContractDetail = () => {
   const { id } = useParams();
@@ -29,14 +30,6 @@ const ContractDetail = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
-  const [showNegotiateModal, setShowNegotiateModal] = useState(false);
-  const [negotiationData, setNegotiationData] = useState({
-    pricePerUnit: '',
-    quantity: '',
-    deliveryDate: '',
-    qualityRequirements: '',
-    specialRequirements: ''
-  });
   
   // Utility function to format dates
   const formatDate = (dateString) => {
@@ -70,7 +63,7 @@ const ContractDetail = () => {
   // Check if active tab is no longer accessible due to contract status
   useEffect(() => {
     // If on terms tab but contract is not in an approved state, redirect to overview
-    if (activeTab === 'terms' && !['accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract?.status)) {
+    if (activeTab === 'terms' && !['payment_pending', 'accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract?.status)) {
       setActiveTab('overview');
     }
     
@@ -82,6 +75,7 @@ const ContractDetail = () => {
   
   // Determine if current user is farmer or buyer
   const isFarmer = contract ? (contract.farmer._id === user._id || contract.farmer === user._id) : false;
+  const isBuyer = !isFarmer; // Define isBuyer as the opposite of isFarmer
   const userRole = isFarmer ? 'farmer' : 'buyer';
   const otherRole = isFarmer ? 'buyer' : 'farmer';
 
@@ -281,6 +275,12 @@ const ContractDetail = () => {
             <FaClock className="mr-1" aria-hidden="true" /> Pending
           </span>
         );
+      case 'payment_pending':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-800" role="status">
+            <FaMoneyBillWave className="mr-1" aria-hidden="true" /> Payment Required
+          </span>
+        );
       case 'requested':
         return (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800" role="status">
@@ -330,20 +330,20 @@ const ContractDetail = () => {
 
   const handleCancelContract = async () => {
     if (window.confirm("Are you sure you want to cancel this contract? This action cannot be undone.")) {
-      setCancelLoading(true);
+        setCancelLoading(true);
       try {
         const result = await contractService.updateContractStatus(contract._id, 'cancelled');
         if (result) {
           toast.success("Contract cancelled successfully");
           setContract(prev => ({ ...prev, status: 'cancelled' }));
-        } else {
+          } else {
           toast.error("Failed to cancel contract. Please try again.");
         }
       } catch (error) {
         console.error("Error cancelling contract:", error);
         toast.error(error.message || "An error occurred while cancelling the contract");
       } finally {
-        setCancelLoading(false);
+          setCancelLoading(false);
       }
     }
   };
@@ -386,6 +386,8 @@ const ContractDetail = () => {
       const response = await api.put(`/contracts/${id}/status`, { status: newStatus });
       
       if (response.data && response.data.success) {
+        console.log(newStatus)
+        console.log(response)
         toast.success(`Contract ${newStatus} successfully`);
         // Update local contract state
         setContract(prevContract => ({
@@ -402,11 +404,43 @@ const ContractDetail = () => {
   };
 
   // Handle contract actions based on status and role
-  const handleAcceptContract = () => updateContractStatus('accepted');
+  const handleAcceptContract = () => updateContractStatus('payment_pending');
   const handleRejectContract = () => updateContractStatus('rejected');
   const handleMarkAsHarvested = () => updateContractStatus('harvested');
   const handleMarkAsDelivered = () => updateContractStatus('delivered');
   const handleMarkAsCompleted = () => updateContractStatus('completed');
+  
+  // Handle payment confirmation by buyer
+  const handleConfirmPayment = async () => {
+    try {
+      toast.success('Payment notification sent to the farmer');
+      
+      // Update UI to indicate payment is waiting for verification
+      setContract(prevContract => ({
+        ...prevContract,
+        paymentSubmitted: true // This is just for UI, not stored in DB yet
+      }));
+    } catch (error) {
+      toast.error('Failed to process payment');
+      console.error(error);
+    }
+  };
+
+  // Handle payment verification by farmer
+  const handleVerifyPayment = async () => {
+    // For farmer to verify payment is received
+    if (window.confirm('Confirm that you have received the payment?')) {
+      try {
+        const response = await updateContractStatus('active');
+        if (response && response.success) {
+          toast.success('Payment verified! Contract is now active.');
+        }
+      } catch (error) {
+        toast.error('Failed to verify payment');
+        console.error(error);
+      }
+    }
+  };
 
   // Get color scheme based on contract status
   const getStatusColors = (status) => {
@@ -415,6 +449,8 @@ const ContractDetail = () => {
         return { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: <FaClock className="mr-1" /> };
       case 'negotiating':
         return { bg: 'bg-blue-100', text: 'text-blue-800', icon: <FaHandshake className="mr-1" /> };
+      case 'payment_pending':
+        return { bg: 'bg-amber-100', text: 'text-amber-800', icon: <FaMoneyBillWave className="mr-1" /> };
       case 'accepted':
         return { bg: 'bg-green-100', text: 'text-green-800', icon: <FaCheck className="mr-1" /> };
       case 'active':
@@ -439,6 +475,37 @@ const ContractDetail = () => {
   // Navigate to chat
   const handleOpenChat = () => {
     navigate(`/chat/${id}`);
+  };
+
+  // Add this helper function after the existing helper functions
+  const canAcceptContract = (contract, isFarmer) => {
+    // If contract is already cancelled or approved, no one can accept
+    if (['cancelled', 'accepted'].includes(contract.status)) {
+      return false;
+    }
+
+    // If no negotiation history, only farmer can accept
+    if (!contract.negotiationHistory || contract.negotiationHistory.length === 0) {
+      return isFarmer;
+    }
+
+    // Get the last negotiation entry
+    const lastNegotiation = contract.negotiationHistory[contract.negotiationHistory.length - 1];
+    const lastProposerId = typeof lastNegotiation.proposedBy === 'object' 
+      ? lastNegotiation.proposedBy._id 
+      : lastNegotiation.proposedBy;
+
+    const farmerId = typeof contract.farmer === 'object' 
+      ? contract.farmer._id 
+      : contract.farmer;
+
+    // If farmer made the last offer, only buyer can accept
+    if (lastProposerId === farmerId) {
+      return !isFarmer;
+    }
+    
+    // If buyer made the last offer, only farmer can accept
+    return isFarmer;
   };
 
   if (loading || isLoading) {
@@ -526,30 +593,30 @@ const ContractDetail = () => {
             </span>
             
             <div className="flex gap-2 print:hidden">
-              <button
+          <button
                 onClick={handleOpenChat}
                 className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center text-sm"
-              >
+          >
                 <FaCommentDots className="mr-1" /> Chat
-              </button>
+          </button>
               
-              <button
+          <button
                 onClick={() => window.print()}
                 className="px-3 py-1 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 flex items-center text-sm"
-              >
+          >
                 <FaPrint className="mr-1" /> Print
-              </button>
+          </button>
             </div>
-          </div>
         </div>
-        
+      </div>
+
         {/* Contract Timeline */}
         <div className="mt-6 bg-white bg-opacity-10 rounded-lg p-4">
           <div className="flex flex-wrap items-center text-sm">
             <div className="flex items-center mr-6 mb-2">
               <FaCalendarAlt className="mr-1 opacity-80" />
               <span>Requested: {formatDate(contract.createdAt || contract.requestDate)}</span>
-            </div>
+          </div>
             
             <div className="flex items-center mr-6 mb-2">
               <FaSeedling className="mr-1 opacity-80" />
@@ -563,7 +630,7 @@ const ContractDetail = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Navigation Tabs */}
       <div className="border-b border-gray-200 print:hidden">
         <nav className="flex overflow-x-auto">
@@ -577,7 +644,7 @@ const ContractDetail = () => {
           </button>
           
           {/* Only show Detailed Contract Terms tab when contract is accepted or later */}
-          {['accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract.status) && (
+          {['payment_pending', 'accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract.status) && (
             <button 
               className={`px-4 py-3 text-sm font-medium ${activeTab === 'terms' 
                 ? 'border-b-2 border-green-600 text-green-600' 
@@ -596,18 +663,6 @@ const ContractDetail = () => {
           >
             Negotiation History
           </button>
-          
-          {/* Only show Progress Updates tab for active contracts */}
-          {['accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract.status) && (
-            <button 
-              className={`px-4 py-3 text-sm font-medium ${activeTab === 'progress' 
-                ? 'border-b-2 border-green-600 text-green-600' 
-                : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
-              onClick={() => setActiveTab('progress')}
-            >
-              Progress Updates
-            </button>
-          )}
         </nav>
       </div>
 
@@ -616,6 +671,118 @@ const ContractDetail = () => {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div>
+            {/* Contract Status Card */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
+              <div className={`p-4 ${statusColors.bg} flex justify-between items-center`}>
+                <div className="flex items-center">
+                  <h3 className={`text-lg font-semibold ${statusColors.text} flex items-center`}>
+                    {statusColors.icon} Contract Status: {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
+                  </h3>
+          </div>
+                <span className="text-sm font-medium px-2.5 py-0.5 rounded-full bg-white shadow-sm">
+                  ID: {contract._id.substr(-6)}
+                </span>
+              </div>
+              
+              <div className="p-5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">Created</h4>
+                    <p className="text-gray-800">{formatDate(contract.createdAt)}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatDistanceToNow(new Date(contract.createdAt), { addSuffix: true })}
+            </p>
+          </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">Last Updated</h4>
+                    <p className="text-gray-800">{formatDate(contract.updatedAt)}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatDistanceToNow(new Date(contract.updatedAt), { addSuffix: true })}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">Contract Term</h4>
+                    <p className="text-gray-800">
+                      {formatDate(contract.expectedDeliveryDate)} (Expected)
+                    </p>
+                    {contract.status === 'completed' && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Completed on {formatDate(contract.completedAt)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+        </div>
+      </div>
+
+            {/* Payment Required Card - Only shown to buyer when contract is in payment_pending state */}
+            {isBuyer && contract.status === 'payment_pending' && (
+              <div className="bg-white rounded-lg border border-yellow-300 p-4 mb-6">
+                <h3 className="text-lg font-medium text-gray-800 mb-2 flex items-center">
+                  <FaMoneyBillWave className="mr-2 text-yellow-600" /> Payment Required
+          </h3>
+                <p className="text-gray-600 mb-4">
+                  Please complete the payment to activate this contract. The farmer will be notified once payment is confirmed.
+                </p>
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <h4 className="font-medium text-gray-700 mb-2">Payment Details:</h4>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-gray-600">Total Amount:</span>
+                    <span className="font-medium">{formatCurrency(contract.totalAmount)}</span>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Have you completed the payment? Click Yes to confirm.")) {
+                        handleConfirmPayment();
+                      }
+                    }}
+                    disabled={contract.paymentSubmitted}
+                    className={`mt-4 py-2 px-4 rounded-md flex items-center justify-center w-full ${
+                      contract.paymentSubmitted 
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    {contract.paymentSubmitted ? (
+                      <>
+                        <FaCheck className="mr-2" /> Payment Notification Sent
+                      </>
+                    ) : (
+                      <>
+                        <FaMoneyBillWave className="mr-2" /> Proceed to Payment
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Payment Confirmation - Only shown to farmer when contract is in payment_pending state */}
+            {isFarmer && contract.status === 'payment_pending' && (
+              <div className="bg-white rounded-lg border border-yellow-300 p-4 mb-6">
+                <h3 className="text-lg font-medium text-gray-800 mb-2 flex items-center">
+                  <FaMoneyBillWave className="mr-2 text-yellow-600" /> Awaiting Payment
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {contract.paymentSubmitted 
+                    ? "The buyer has confirmed making the payment. Please verify once you've received it."
+                    : "Waiting for buyer to complete payment. If you have already received the payment, you can manually verify below."}
+                </p>
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <h4 className="font-medium text-gray-700 mb-2">Payment Amount:</h4>
+                  <div className="font-medium text-gray-800 mb-4">{formatCurrency(contract.totalAmount)}</div>
+                  
+                  <button
+                    onClick={handleVerifyPayment}
+                    className="mt-2 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 flex items-center justify-center w-full"
+                  >
+                    <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? "Verify Payment Received" : "Payment Already Received"}
+                  </button>
+                </div>
+              </div>
+            )}
+            
             {/* Contract Summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               {/* Latest Offer / Decided Terms Card */}
@@ -630,7 +797,7 @@ const ContractDetail = () => {
                       <FaHandshake className="mr-2 text-blue-600" /> Latest Offer
                     </>
                   )}
-                </h3>
+          </h3>
                 <div className="space-y-3">
                   <div className="flex">
                     <span className="font-medium text-gray-600 w-32">Product:</span>
@@ -685,9 +852,9 @@ const ContractDetail = () => {
                 <h3 className="text-lg font-semibold mb-4 flex items-center text-gray-800">
                   <FaHandshake className="mr-2 text-green-600" /> Contract Parties
                 </h3>
-                <div className="space-y-4">
+          <div className="space-y-4">
                   {/* Farmer Info */}
-                  <div>
+              <div>
                     <h4 className="font-medium flex items-center text-gray-700 mb-2">
                       <FaTractor className="mr-1 text-sm" /> 
                       Farmer {isFarmer ? '(You)' : ''}
@@ -743,12 +910,12 @@ const ContractDetail = () => {
                     <div className="absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 border-green-600 bg-white"></div>
                     <div>
                       <h4 className="font-medium text-gray-800">Contract Requested</h4>
-                      <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600">
                         {formatDate(contract.createdAt || contract.requestDate)}
-                      </p>
-                    </div>
-                  </div>
-                  
+                </p>
+              </div>
+            </div>
+
                   {/* Negotiation / Acceptance Phase */}
                   <div className="relative">
                     <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
@@ -758,7 +925,7 @@ const ContractDetail = () => {
                           ? 'border-red-500 bg-red-100' 
                           : 'border-green-600 bg-white'}`}>
                     </div>
-                    <div>
+              <div>
                       <h4 className="font-medium text-gray-800">
                         {contract.status === 'negotiating' 
                           ? 'Under Negotiation' 
@@ -776,10 +943,35 @@ const ContractDetail = () => {
                             : contract.status === 'accepted' || contract.status === 'active'
                               ? `Accepted on ${formatDate(contract.updatedAt)}`
                               : 'No longer active'}
-                      </p>
-                    </div>
-                  </div>
-                  
+                </p>
+              </div>
+            </div>
+
+                  {/* Payment Phase - only show if payment_pending or beyond */}
+                  {(['payment_pending', 'active', 'readyForHarvest', 'harvested', 'delivered', 'completed'].includes(contract.status)) && (
+                    <div className="relative">
+                      <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                        ${contract.status === 'payment_pending'
+                          ? 'border-amber-500 bg-amber-100' 
+                          : 'border-green-600 bg-white'}`}>
+                      </div>
+                <div>
+                        <h4 className="font-medium text-gray-800">
+                          {contract.status === 'payment_pending' 
+                            ? 'Payment Pending'
+                            : 'Payment Completed'}
+                        </h4>
+                        <p className="text-sm text-gray-600">
+                          {contract.status === 'payment_pending'
+                            ? contract.paymentSubmitted 
+                              ? 'Payment notification sent, awaiting verification'
+                              : 'Waiting for buyer to complete payment'
+                            : `Payment verified on ${formatDate(contract.updatedAt)}`}
+                  </p>
+                </div>
+              </div>
+            )}
+
                   {/* Expected Harvest */}
                   <div className="relative">
                     <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
@@ -789,14 +981,14 @@ const ContractDetail = () => {
                           ? 'border-yellow-500 bg-yellow-100'
                           : 'border-gray-300 bg-gray-100'}`}>
                     </div>
-                    <div>
+              <div>
                       <h4 className="font-medium text-gray-800">Expected Harvest</h4>
                       <p className="text-sm text-gray-600">
                         {formatDate(contract.expectedHarvestDate)}
                       </p>
-                    </div>
                   </div>
-                  
+                  </div>
+
                   {/* Delivery Date */}
                   <div className="relative">
                     <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
@@ -804,14 +996,14 @@ const ContractDetail = () => {
                         ? 'border-green-600 bg-white'
                         : 'border-gray-300 bg-gray-100'}`}>
                     </div>
-                    <div>
+                <div>
                       <h4 className="font-medium text-gray-800">Expected Delivery</h4>
                       <p className="text-sm text-gray-600">
                         {formatDate(contract.deliveryDate)}
-                      </p>
-                    </div>
-                  </div>
-                  
+                  </p>
+              </div>
+            </div>
+
                   {/* Completion */}
                   <div className="relative">
                     <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
@@ -819,46 +1011,116 @@ const ContractDetail = () => {
                         ? 'border-green-600 bg-green-100'
                         : 'border-gray-300 bg-gray-100'}`}>
                     </div>
-                    <div>
+              <div>
                       <h4 className="font-medium text-gray-800">Contract Completion</h4>
                       <p className="text-sm text-gray-600">
                         {contract.status === 'completed'
                           ? `Completed on ${formatDate(contract.updatedAt)}`
                           : 'Pending'}
                       </p>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
+          </div>
+              </div>
+            </div>
+            
+            {/* Next Actions Card - Overview Tab */}
+            {activeTab === 'overview' && (
+              <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center">
+                  <FaClipboardList className="mr-2 text-blue-600" /> Next Actions
+                </h3>
+                
+                <div className="space-y-3">
+                  {contract.status === 'pending' && (
+                    <>
+                      <p className="text-gray-700">This contract request is awaiting your response.</p>
+                      
+                      <div className="flex flex-wrap gap-3 mt-4">
+                        {user.role === (contract.buyerId === user._id ? 'buyer' : 'farmer') && (
+                          <>
+                            <button 
+                              onClick={handleAcceptContract} 
+                              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
+                            >
+                              <FaCheck className="mr-2" /> Accept Contract
+                            </button>
+                            
+                            <button 
+                              onClick={handleRejectContract} 
+                              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
+                            >
+                              <FaTimes className="mr-2" /> Reject Contract
+                            </button>
+                            
+                            <button 
+                              onClick={() => navigate(`/chat/${contract.chatId}`)} 
+                              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+                            >
+                              <FaCommentDots className="mr-2" /> Open Chat
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  
+                  {contract.status === 'negotiating' && (
+                    <>
+                      <p className="text-gray-700">This contract is in negotiation. Use the chat to discuss terms with the {user.role === 'farmer' ? 'buyer' : 'farmer'}.</p>
+                      
+                      <div className="flex flex-wrap gap-3 mt-4">
+                        {canAcceptContract() && (
+                          <button 
+                            onClick={handleAcceptContract} 
+                            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
+                          >
+                            <FaCheck className="mr-2" /> Accept Contract
+                          </button>
+                        )}
+                        
+                        <button 
+                          onClick={() => navigate(`/chat/${contract.chatId}`)} 
+                          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+                        >
+                          <FaCommentDots className="mr-2" /> Open Chat
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
             
             {/* Next Actions Card - Role & Status-specific */}
             <div className="bg-blue-50 rounded-lg p-5 border border-blue-100 print:hidden">
               <h3 className="text-lg font-semibold mb-4 text-blue-800">
                 Next Steps
-              </h3>
-              
-              <div className="space-y-4">
+          </h3>
+          
+          <div className="space-y-4">
                 {/* Status-specific guidance */}
-                {contract.status === 'requested' && isFarmer && (
-                  <div className="flex items-start">
+                {contract.status === 'requested' && (
+            <div className="flex items-start">
                     <FaClipboardList className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
-                      <p className="text-gray-800 mb-2">You've received a contract request from {contract.buyer?.Name}. Review the terms and decide whether to accept, negotiate, or decline.</p>
+              <div>
+                      <p className="text-gray-800 mb-2">You've received a contract request from {contract.buyer?.Name}. Review the terms and decide whether to accept or decline.</p>
                       <div className="flex flex-wrap gap-2 mt-2">
+                        {canAcceptContract(contract, isFarmer) && (
+                          <button 
+                            onClick={handleAcceptContract}
+                            disabled={cancelLoading}
+                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                          >
+                            {cancelLoading ? 'Processing...' : <><FaCheck className="mr-1" /> Accept Contract</>}
+                          </button>
+                        )}
                         <button 
-                          onClick={handleAcceptContract}
-                          disabled={cancelLoading}
-                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
-                        >
-                          {cancelLoading ? 'Processing...' : <><FaCheck className="mr-1" /> Accept Contract</>}
-                        </button>
-                        <button 
-                          onClick={() => setShowNegotiateModal(true)}
+                          onClick={handleOpenChat}
                           disabled={cancelLoading}
                           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
                         >
-                          <FaHandshake className="mr-1" /> Negotiate
+                          <FaCommentDots className="mr-1" /> Open Chat
                         </button>
                         <button 
                           onClick={handleRejectContract}
@@ -867,39 +1129,15 @@ const ContractDetail = () => {
                         >
                           <FaTimes className="mr-1" /> Decline
                         </button>
-                      </div>
-                    </div>
-                  </div>
+              </div>
+            </div>
+            </div>
                 )}
-                
-                {contract.status === 'requested' && !isFarmer && (
-                  <div className="flex items-start">
-                    <FaClock className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
-                      <p className="text-gray-800 mb-2">Your contract request has been sent to {contract.farmer?.Name}. Waiting for them to review and respond.</p>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <button 
-                          onClick={handleOpenChat}
-                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
-                        >
-                          <FaCommentDots className="mr-1" /> Message Farmer
-                        </button>
-                        <button 
-                          onClick={handleCancelContract}
-                          disabled={cancelLoading}
-                          className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center"
-                        >
-                          {cancelLoading ? 'Processing...' : <><FaTimes className="mr-1" /> Cancel Request</>}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
+
                 {contract.status === 'negotiating' && (
-                  <div className="flex items-start">
+            <div className="flex items-start">
                     <FaHandshake className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
+              <div>
                       <p className="text-gray-800 mb-2">This contract is under negotiation. Review the latest terms and respond.</p>
                       <div className="flex flex-wrap gap-2 mt-2">
                         <button 
@@ -909,13 +1147,12 @@ const ContractDetail = () => {
                           <FaHistory className="mr-1" /> View Negotiation History
                         </button>
                         <button 
-                          onClick={() => setShowNegotiateModal(true)}
-                          disabled={cancelLoading}
-                          className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 flex items-center"
+                          onClick={handleOpenChat}
+                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
                         >
-                          <FaHandshake className="mr-1" /> Make Counter Offer
+                          <FaCommentDots className="mr-1" /> Open Chat
                         </button>
-                        {isFarmer && (
+                        {canAcceptContract(contract, isFarmer) && (
                           <button 
                             onClick={handleAcceptContract}
                             disabled={cancelLoading}
@@ -924,79 +1161,78 @@ const ContractDetail = () => {
                             {cancelLoading ? 'Processing...' : <><FaCheck className="mr-1" /> Accept Terms</>}
                           </button>
                         )}
-                      </div>
-                    </div>
-                  </div>
+              </div>
+            </div>
+          </div>
                 )}
-                
-                {contract.status === 'accepted' && (
-                  <div className="flex items-start">
-                    <FaLeaf className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
-                      <p className="text-gray-800 mb-2">The contract has been accepted. Now in the growing phase.</p>
+
+                {contract.status === 'payment_pending' && (
+            <div className="flex items-start">
+                    <FaMoneyBillWave className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
+              <div>
+                      {isBuyer && (
+                        <>
+                          <p className="text-gray-800 mb-2">
+                            {contract.paymentSubmitted 
+                              ? "Your payment notification has been sent. Waiting for farmer to verify receipt."
+                              : "Contract terms accepted! Please complete the payment to activate the contract."}
+                          </p>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {!contract.paymentSubmitted && (
+                              <button 
+                                onClick={() => {
+                                  if (window.confirm("Have you completed the payment? Click Yes to confirm.")) {
+                                    handleConfirmPayment();
+                                  }
+                                }}
+                                disabled={cancelLoading}
+                                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                              >
+                                <FaMoneyBillWave className="mr-1" /> Proceed to Payment
+                              </button>
+                            )}
+                            <button 
+                              onClick={handleOpenChat}
+                              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+                            >
+                              <FaCommentDots className="mr-1" /> Open Chat
+                            </button>
+              </div>
+                        </>
+                      )}
+                      
                       {isFarmer && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          <button 
-                            onClick={() => setActiveTab('progress')}
-                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
-                          >
-                            <FaCameraRetro className="mr-1" /> Add Progress Update
-                          </button>
-                          <button 
-                            onClick={handleMarkAsHarvested}
-                            disabled={cancelLoading}
-                            className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center"
-                          >
-                            <FaTractor className="mr-1" /> Mark as Harvested
-                          </button>
-                        </div>
-                      )}
-                      {!isFarmer && (
-                        <button 
-                          onClick={handleOpenChat}
-                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center mt-2"
-                        >
-                          <FaCommentDots className="mr-1" /> Message Farmer
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                {contract.status === 'harvested' && (
-                  <div className="flex items-start">
-                    <FaTractor className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
-                      <p className="text-gray-800 mb-2">The crop has been harvested and is ready for delivery.</p>
-                      {isFarmer && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          <button 
-                            onClick={handleMarkAsDelivered}
-                            disabled={cancelLoading}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
-                          >
-                            <FaShippingFast className="mr-1" /> Mark as Delivered
-                          </button>
-                        </div>
-                      )}
-                      {!isFarmer && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          <button 
-                            onClick={handleOpenChat}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
-                          >
-                            <FaCommentDots className="mr-1" /> Coordinate Delivery
-                          </button>
-                        </div>
+                        <>
+                          <p className="text-gray-800 mb-2">
+                            {contract.paymentSubmitted 
+                              ? "The buyer has confirmed payment. Please verify that you've received it."
+                              : "Waiting for buyer to complete payment. If you have already received the payment, you can manually verify below."}
+                          </p>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <button 
+                              onClick={handleVerifyPayment}
+                              disabled={cancelLoading}
+                              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+                            >
+                              <FaCheckCircle className="mr-1" /> {contract.paymentSubmitted ? "Verify Payment Received" : "Payment Already Received"}
+                            </button>
+                            <button 
+                              onClick={handleOpenChat}
+                              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+                            >
+                              <FaCommentDots className="mr-1" /> Open Chat
+                            </button>
+            </div>
+                        </>
                       )}
                     </div>
                   </div>
                 )}
-                
+
                 {contract.status === 'delivered' && (
-                  <div className="flex items-start">
+            <div className="flex items-start">
                     <FaShippingFast className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
+              <div>
                       <p className="text-gray-800 mb-2">The crop has been delivered. Please complete the contract once payment is finalized.</p>
                       {!isFarmer && (
                         <div className="flex flex-wrap gap-2 mt-2">
@@ -1007,16 +1243,16 @@ const ContractDetail = () => {
                           >
                             <FaCheck className="mr-1" /> Mark as Completed
                           </button>
-                        </div>
+              </div>
                       )}
-                    </div>
-                  </div>
+            </div>
+          </div>
                 )}
-                
+
                 {contract.status === 'completed' && (
-                  <div className="flex items-start">
+            <div className="flex items-start">
                     <FaCheck className="text-green-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
+              <div>
                       <p className="text-gray-800 mb-2">This contract has been successfully completed. Thank you for using AgroLink!</p>
                       <button 
                         onClick={() => navigate('/contracts/new')}
@@ -1024,14 +1260,14 @@ const ContractDetail = () => {
                       >
                         <FaFileContract className="mr-1" /> Create New Contract
                       </button>
-                    </div>
-                  </div>
+          </div>
+            </div>
                 )}
-                
+
                 {(contract.status === 'cancelled' || contract.status === 'rejected') && (
-                  <div className="flex items-start">
+            <div className="flex items-start">
                     <FaTimes className="text-red-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
+              <div>
                       <p className="text-gray-800 mb-2">This contract has been {contract.status}. No further actions are available.</p>
                       <button 
                         onClick={() => navigate('/contracts/new')}
@@ -1039,17 +1275,17 @@ const ContractDetail = () => {
                       >
                         <FaFileContract className="mr-1" /> Create New Contract
                       </button>
-                    </div>
+            </div>
                   </div>
                 )}
               </div>
             </div>
           </div>
         )}
-        
+
         {/* Contract Terms Tab */}
         {activeTab === 'terms' && (
-          <div>
+            <div>
             <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-6">
               <div className="bg-gray-100 p-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-800 flex items-center">
@@ -1068,11 +1304,11 @@ const ContractDetail = () => {
                     <div className="flex flex-col">
                       <span className="text-sm text-gray-500">Product:</span>
                       <span className="font-medium text-gray-800">{cropDetails?.name || contract.crop?.name || 'Not specified'}</span>
-                    </div>
+            </div>
                     <div className="flex flex-col">
                       <span className="text-sm text-gray-500">Quantity:</span>
                       <span className="font-medium text-gray-800">{contract.quantity} {contract.unit}</span>
-                    </div>
+          </div>
                     <div className="flex flex-col">
                       <span className="text-sm text-gray-500">Price Per Unit:</span>
                       <span className="font-medium text-gray-800">{formatCurrency(contract.pricePerUnit)}</span>
@@ -1081,9 +1317,9 @@ const ContractDetail = () => {
                       <span className="text-sm text-gray-500">Total Amount:</span>
                       <span className="font-medium text-gray-800">{formatCurrency(contract.totalAmount)}</span>
                     </div>
-                  </div>
-                </div>
-                
+            </div>
+          </div>
+
                 {/* Delivery & Timeline */}
                 <div className="p-5">
                   <h4 className="font-medium text-gray-800 mb-3">Timeline & Delivery</h4>
@@ -1091,7 +1327,7 @@ const ContractDetail = () => {
                     <div className="flex flex-col">
                       <span className="text-sm text-gray-500">Request Date:</span>
                       <span className="font-medium text-gray-800">{formatDate(contract.createdAt || contract.requestDate)}</span>
-                    </div>
+              </div>
                     <div className="flex flex-col">
                       <span className="text-sm text-gray-500">Expected Harvest Date:</span>
                       <span className="font-medium text-gray-800">{formatDate(contract.expectedHarvestDate)}</span>
@@ -1115,17 +1351,17 @@ const ContractDetail = () => {
                       {contract.qualityRequirements || 'No specific quality requirements provided.'}
                     </p>
                   </div>
-                </div>
-                
-                {/* Special Requirements */}
-                {contract.specialRequirements && (
+      </div>
+
+      {/* Special Requirements */}
+      {contract.specialRequirements && (
                   <div className="p-5">
                     <h4 className="font-medium text-gray-800 mb-3">Special Requirements</h4>
                     <div className="bg-white p-3 rounded border border-gray-200">
                       <p className="text-gray-800 whitespace-pre-wrap">
                         {contract.specialRequirements}
                       </p>
-                    </div>
+          </div>
                   </div>
                 )}
                 
@@ -1138,7 +1374,7 @@ const ContractDetail = () => {
                         <h5 className="text-sm font-medium text-gray-700 mb-1">Advance Payment</h5>
                         <p className="text-xl font-semibold text-green-600">{contract.paymentTerms.advancePercentage || 0}%</p>
                         <p className="text-sm text-gray-600 mt-1">Upon contract acceptance</p>
-                      </div>
+              </div>
                       <div className="bg-white p-3 rounded border border-gray-200">
                         <h5 className="text-sm font-medium text-gray-700 mb-1">Midterm Payment</h5>
                         <p className="text-xl font-semibold text-green-600">{contract.paymentTerms.midtermPercentage || 0}%</p>
@@ -1160,12 +1396,12 @@ const ContractDetail = () => {
                         <li>50% midterm payment upon harvest</li>
                         <li>30% final payment upon delivery</li>
                       </ul>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
-            
+          )}
+                </div>
+            </div>
+          </div>
+
             {/* Contract Document (if available) */}
             {contract.contractDocument && contract.contractDocument.url && (
               <div className="bg-gray-50 rounded-lg border border-gray-200 p-5">
@@ -1184,7 +1420,7 @@ const ContractDetail = () => {
                   >
                     <FaDownload className="mr-2" /> Download Document
                   </a>
-                </div>
+              </div>
               </div>
             )}
           </div>
@@ -1192,7 +1428,7 @@ const ContractDetail = () => {
         
         {/* Negotiations Tab */}
         {activeTab === 'negotiations' && (
-          <div>
+              <div>
             <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-6">
               <div className="bg-gray-100 p-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-800 flex items-center">
@@ -1202,14 +1438,14 @@ const ContractDetail = () => {
                   {contract.negotiationHistory && contract.negotiationHistory.length > 0 
                     ? `${contract.negotiationHistory.length} round${contract.negotiationHistory.length === 1 ? '' : 's'} of negotiation`
                     : 'No negotiations yet'}
-                </p>
+              </p>
               </div>
               
               {(!contract.negotiationHistory || contract.negotiationHistory.length === 0) ? (
                 <div className="p-6 text-center text-gray-500">
                   <FaCommentSlash className="mx-auto mb-2 text-gray-400 text-2xl" />
                   <p>No negotiation history available for this contract.</p>
-                </div>
+            </div>
               ) : (
                 <div className="p-4">
                   {/* Negotiation Summary */}
@@ -1217,8 +1453,8 @@ const ContractDetail = () => {
                     <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
                       <h4 className="text-sm font-medium text-gray-600 mb-1">Total Rounds</h4>
                       <p className="text-2xl font-bold text-gray-800">{contract.negotiationHistory.length}</p>
-                    </div>
-                    
+          </div>
+
                     <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
                       <h4 className="text-sm font-medium text-gray-600 mb-1">Farmer Proposals</h4>
                       <p className="text-2xl font-bold text-green-600">
@@ -1230,7 +1466,7 @@ const ContractDetail = () => {
                           return proposedById === farmerId;
                         }).length}
                       </p>
-                    </div>
+              </div>
                     
                     <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
                       <h4 className="text-sm font-medium text-gray-600 mb-1">Buyer Proposals</h4>
@@ -1409,9 +1645,9 @@ const ContractDetail = () => {
                                         </div>
                                       </div>
                                     ))}
-                                  </div>
-                                </div>
-                              )}
+              </div>
+            </div>
+          )}
                             </div>
                           </div>
                         </div>
@@ -1428,13 +1664,13 @@ const ContractDetail = () => {
                 <h3 className="text-lg font-semibold mb-3 text-blue-800">Negotiation Actions</h3>
                 <div className="flex flex-wrap gap-3">
                   <button 
-                    onClick={() => setShowNegotiateModal(true)}
+                    onClick={handleOpenChat}
                     className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
                   >
-                    <FaHandshake className="mr-2" /> Make Counter Offer
+                    <FaCommentDots className="mr-2" /> Open Chat
                   </button>
                   
-                  {isFarmer && contract.status === 'requested' && (
+                  {canAcceptContract(contract, isFarmer) && (
                     <button 
                       onClick={handleAcceptContract}
                       disabled={cancelLoading}
@@ -1443,235 +1679,92 @@ const ContractDetail = () => {
                       <FaCheck className="mr-2" /> Accept Contract
                     </button>
                   )}
-                  
-                  {isFarmer && contract.status === 'negotiating' && (
-                    <button 
-                      onClick={handleAcceptContract}
-                      disabled={cancelLoading}
-                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
-                    >
-                      <FaCheck className="mr-2" /> Accept Current Terms
-                    </button>
-                  )}
-                  
-                  <button 
-                    onClick={handleOpenChat}
-                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center"
-                  >
-                    <FaCommentDots className="mr-2" /> Open Chat
-                  </button>
-                </div>
+              </div>
               </div>
             )}
-          </div>
-        )}
-        
-        {/* Progress Updates Tab */}
-        {activeTab === 'progress' && (
-          <div>
-            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-6">
-              <div className="bg-gray-100 p-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-800 flex items-center">
-                  <FaChartLine className="mr-2 text-green-600" /> Progress Updates
-                </h3>
-                <p className="text-sm text-gray-600 mt-1">
-                  Track the growth and development of the crop throughout the contract period.
-                </p>
-              </div>
-              
-              <div className="p-5">
-                {/* Progress Updates Form - Only visible to farmers for active contracts */}
-                {isFarmer && ['accepted', 'active'].includes(contract.status) && (
-                  <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
-                    <h4 className="font-medium text-gray-800 mb-3">Add New Progress Update</h4>
-                    <form onSubmit={(e) => {
-                      e.preventDefault();
-                      const formData = new FormData(e.target);
-                      const update = {
-                        title: formData.get('title'),
-                        description: formData.get('description'),
-                        date: new Date().toISOString(),
-                        images: [] // This would handle image uploads in a real implementation
-                      };
-                      
-                      // Call an API to add the progress update
-                      toast.success("Progress update added successfully!");
-                      
-                      // Refresh contract data or add to local state
-                      setContract(prev => ({
-                        ...prev,
-                        progressUpdates: [
-                          ...(prev.progressUpdates || []),
-                          update
-                        ]
-                      }));
-                      
-                      // Reset form
-                      e.target.reset();
-                    }}>
-                      <div className="space-y-4">
-                        <div>
-                          <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
-                            Update Title
-                          </label>
-                          <input
-                            type="text"
-                            id="title"
-                            name="title"
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                            placeholder="e.g., Seedling Stage, First Bloom, etc."
-                          />
-                        </div>
-                        
-                        <div>
-                          <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-                            Description
-                          </label>
-                          <textarea
-                            id="description"
-                            name="description"
-                            rows="3"
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                            placeholder="Describe the current state of the crop, any observations, or challenges..."
-                          ></textarea>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Photos (Optional)
-                          </label>
-                          <div className="flex items-center justify-center w-full">
-                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                              <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                <FaCameraRetro className="w-8 h-8 mb-3 text-gray-400" />
-                                <p className="mb-2 text-sm text-gray-500">
-                                  <span className="font-semibold">Click to upload</span> or drag and drop
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  PNG, JPG or JPEG (MAX. 5MB)
-                                </p>
-                              </div>
-                              <input id="images" name="images" type="file" accept="image/*" multiple className="hidden" />
-                            </label>
-                          </div>
-                        </div>
-                        
-                        <button
-                          type="submit"
-                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center w-full justify-center"
-                        >
-                          <FaPlus className="mr-2" /> Add Progress Update
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                )}
-                
-                {/* Progress Updates Timeline */}
-                {contract.progressUpdates && contract.progressUpdates.length > 0 ? (
-                  <div className="space-y-6">
-                    <h4 className="font-medium text-gray-800 mb-3">Progress Timeline</h4>
-                    <div className="relative">
-                      {/* Timeline Line */}
-                      <div className="absolute left-2.5 top-0 bottom-0 w-0.5 bg-gray-200"></div>
-                      
-                      {/* Timeline Events */}
-                      <div className="space-y-6 relative ml-8">
-                        {contract.progressUpdates.map((update, index) => (
-                          <div className="relative" key={index}>
-                            <div className="absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 border-green-600 bg-white"></div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-4">
-                              <div className="flex justify-between items-start mb-2">
-                                <h5 className="font-medium text-gray-800">{update.title}</h5>
-                                <span className="text-sm text-gray-500">{formatDate(update.date)}</span>
-                              </div>
-                              <p className="text-gray-700 mb-3 whitespace-pre-wrap">{update.description}</p>
-                              
-                              {/* Image Gallery */}
-                              {update.images && update.images.length > 0 && (
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-3">
-                                  {update.images.map((image, imgIndex) => (
-                                    <div key={imgIndex} className="relative h-24 rounded overflow-hidden">
-                                      <img 
-                                        src={image.url || image} 
-                                        alt={`Update ${index + 1} image ${imgIndex + 1}`}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <FaClipboardList className="mx-auto mb-2 text-gray-400 text-3xl" />
-                    <p className="mb-1">No progress updates available yet.</p>
-                    {isFarmer && ['accepted', 'active'].includes(contract.status) && (
-                      <p className="text-sm">Use the form above to add your first update.</p>
-                    )}
-                    {!isFarmer && (
-                      <p className="text-sm">The farmer hasn't posted any updates yet.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
             
-            {/* Contract Stage Guidance */}
-            <div className="bg-gray-50 rounded-lg border border-gray-200 p-5">
-              <h3 className="text-lg font-semibold text-gray-800 flex items-center mb-4">
-                <FaLeaf className="mr-2 text-green-600" /> Crop Development Guide
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-4 rounded border border-gray-200">
-                  <h4 className="font-medium text-gray-800 mb-2 flex items-center">
-                    <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2">1</div>
-                    Early Stage
-                  </h4>
-                  <p className="text-sm text-gray-600">
-                    Planting, germination, and initial growth. Watch for proper soil moisture and protection from extreme weather.
-                  </p>
-                </div>
+            {/* Negotiation Actions */}
+            {['negotiating', 'payment_pending'].includes(contract.status) && (
+              <div className="bg-white rounded-lg border border-gray-200 p-5 mt-6">
+                <h4 className="font-medium text-gray-800 mb-4">Actions</h4>
                 
-                <div className="bg-white p-4 rounded border border-gray-200">
-                  <h4 className="font-medium text-gray-800 mb-2 flex items-center">
-                    <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2">2</div>
-                    Mid Stage
-                  </h4>
-                  <p className="text-sm text-gray-600">
-                    Vegetative growth, flowering begins. Focus on irrigation, nutrients, and pest management during this critical phase.
-                  </p>
-                </div>
+                {contract.status === 'negotiating' && (
+                  <div className="space-y-3">
+                    {canAcceptContract(contract, isFarmer) && (
+                      <button
+                        onClick={handleAcceptContract}
+                        className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
+                      >
+                        <FaCheck className="mr-2" /> Accept Current Terms
+                      </button>
+                    )}
+                    
+                    <button
+                      onClick={handleOpenChat}
+                      className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center"
+                    >
+                      <FaCommentDots className="mr-2" /> Open Chat for Negotiation
+                    </button>
+                    
+                    <button
+                      onClick={handleRejectContract}
+                      className="w-full px-4 py-2 border border-red-500 text-red-500 rounded hover:bg-red-50 flex items-center justify-center"
+                    >
+                      <FaTimes className="mr-2" /> Reject Contract
+                    </button>
+                  </div>
+                )}
                 
-                <div className="bg-white p-4 rounded border border-gray-200">
-                  <h4 className="font-medium text-gray-800 mb-2 flex items-center">
-                    <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2">3</div>
-                    Late Stage
-                  </h4>
-                  <p className="text-sm text-gray-600">
-                    Fruit/grain development, maturation, and harvest preparation. Monitor quality and prepare for optimal harvest timing.
-                  </p>
-                </div>
+                {contract.status === 'payment_pending' && (
+                  <div className="space-y-3">
+                    {isBuyer && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm("Have you completed the payment? Click Yes to confirm.")) {
+                            handleConfirmPayment();
+                          }
+                        }}
+                        disabled={contract.paymentSubmitted}
+                        className={`w-full px-4 py-2 rounded flex items-center justify-center ${
+                          contract.paymentSubmitted 
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                            : 'bg-green-600 text-white hover:bg-green-700'
+                        }`}
+                      >
+                        {contract.paymentSubmitted ? (
+                          <>
+                            <FaCheck className="mr-2" /> Payment Notification Sent
+                          </>
+                        ) : (
+                          <>
+                            <FaMoneyBillWave className="mr-2" /> Proceed to Payment
+                          </>
+                        )}
+                      </button>
+                    )}
+                    
+                    {isFarmer && (
+                      <button
+                        onClick={handleVerifyPayment}
+                        className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
+                      >
+                        <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? "Verify Payment Received" : "Payment Already Received"}
+                      </button>
+                    )}
+                    
+                    <button
+                      onClick={handleOpenChat}
+                      className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center"
+                    >
+                      <FaCommentDots className="mr-2" /> Open Chat
+                    </button>
               </div>
-              
-              {cropDetails?.growingInstructions && (
-                <div className="mt-4 bg-white p-4 rounded border border-gray-200">
-                  <h4 className="font-medium text-gray-800 mb-2">Specific Growing Instructions</h4>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{cropDetails.growingInstructions}</p>
-                </div>
-              )}
+                )}
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+          )}
+        </div>
 
       {/* Contract Action Footer */}
       <div className="mt-8 border-t border-gray-200 pt-4 pb-4 print:hidden">
@@ -1684,7 +1777,7 @@ const ContractDetail = () => {
               <FaArrowLeft className="mr-2" /> Back to Contracts
             </button>
             
-            <button
+          <button
               onClick={handlePrint}
               className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-50 flex items-center"
             >
@@ -1700,6 +1793,51 @@ const ContractDetail = () => {
               >
                 <FaCommentDots className="mr-2" /> Open Chat
               </button>
+            )}
+            
+            {/* Payment Pending Actions */}
+            {contract.status === 'payment_pending' && isBuyer && (
+              <button
+                onClick={() => {
+                  if (window.confirm("Have you completed the payment? Click Yes to confirm.")) {
+                    handleConfirmPayment();
+                  }
+                }}
+                disabled={contract.paymentSubmitted}
+                className={`px-4 py-2 rounded flex items-center ${
+                  contract.paymentSubmitted 
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
+              >
+                {contract.paymentSubmitted ? (
+                  <>
+                    <FaCheck className="mr-2" /> Payment Notification Sent
+                  </>
+                ) : (
+                  <>
+                    <FaMoneyBillWave className="mr-2" /> Proceed to Payment
+                  </>
+            )}
+          </button>
+        )}
+        
+            {contract.status === 'payment_pending' && isFarmer && (
+            <button
+                onClick={handleVerifyPayment}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
+            >
+                <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? "Verify Payment Received" : "Payment Already Received"}
+            </button>
+            )}
+            
+            {contract.status === 'payment_pending' && (
+            <button
+                onClick={handleOpenChat}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+            >
+                <FaCommentDots className="mr-2" /> Open Chat
+            </button>
             )}
             
             {isFarmer && contract.status === 'requested' && (
@@ -1728,27 +1866,27 @@ const ContractDetail = () => {
                 className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center"
               >
                 <FaTractor className="mr-2" /> Mark as Harvested
-              </button>
-            )}
-            
+          </button>
+        )}
+        
             {contract.status === 'harvested' && isFarmer && (
-              <button
+            <button
                 onClick={handleMarkAsDelivered}
                 disabled={cancelLoading}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
               >
                 <FaShippingFast className="mr-2" /> Mark as Delivered
-              </button>
+            </button>
             )}
             
             {contract.status === 'delivered' && !isFarmer && (
-              <button
+            <button
                 onClick={handleMarkAsCompleted}
                 disabled={cancelLoading}
                 className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
               >
                 <FaCheck className="mr-2" /> Complete Contract
-              </button>
+            </button>
             )}
             
             {['requested', 'negotiating'].includes(contract.status) && (
@@ -1759,231 +1897,10 @@ const ContractDetail = () => {
               >
                 <FaTimes className="mr-2" /> Cancel Contract
               </button>
-            )}
-          </div>
+        )}
+      </div>
         </div>
       </div>
-      
-      {/* Negotiation Modal */}
-      {showNegotiateModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-semibold mb-4 flex items-center">
-              <FaHandshake className="mr-2 text-blue-600" /> Make a Counter Offer
-            </h3>
-            
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              const formData = new FormData(e.target);
-              
-              try {
-                setCancelLoading(true);
-                
-                // Create offer data
-                const offerData = {
-                  pricePerUnit: Number(formData.get('price')),
-                  quantity: Number(formData.get('quantity')),
-                  deliveryDate: formData.get('deliveryDate'),
-                  message: formData.get('message') || "Counter offer"
-                };
-                
-                // 1. Create a chat message with counter offer (the same format as in ChatInterface.jsx)
-                const clientMessageId = `client-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-                
-                const chatMessage = {
-                  content: offerData.message || "I'm proposing new terms for our contract.",
-                  messageType: 'counterOffer',
-                  clientMessageId,
-                  offer: {
-                    pricePerUnit: offerData.pricePerUnit,
-                    quantity: offerData.quantity,
-                    deliveryDate: new Date(offerData.deliveryDate).toISOString(),
-                    qualityRequirements: "",
-                    specialRequirements: ""
-                  }
-                };
-                
-                try {
-                  // Import socket service and api dynamically
-                  const { default: socketService } = await import('../../services/socket');
-                  const { api } = await import('../../services/api');
-                  
-                  // 2. Send the counter offer as a chat message first
-                  let chatMessageSent = false;
-                  
-                  if (socketService.isSocketConnected()) {
-                    // Try to send via socket if connected
-                    chatMessageSent = socketService.sendMessage(contract._id, chatMessage);
-                  }
-                  
-                  if (!chatMessageSent) {
-                    // Fallback to REST API if socket fails
-                    await api.post(`/chat/contracts/${contract._id}/messages`, chatMessage);
-                  }
-                  
-                  // 3. Update contract status through API to ensure it's in negotiating state
-                  const negotiationData = {
-                    status: 'negotiating',
-                    counterOffer: {
-                      quantity: offerData.quantity,
-                      pricePerUnit: offerData.pricePerUnit,
-                      deliveryDate: offerData.deliveryDate,
-                      paymentTerms: '',
-                      remarks: offerData.message,
-                      proposedBy: user._id
-                    }
-                  };
-                  
-                  const response = await api.put(`/contracts/${contract._id}/status`, negotiationData);
-                  
-                  if (response && response.data && (response.data.success || response.status === 200)) {
-                    toast.success("Counter offer sent successfully!");
-                    
-                    // Update local contract state with new negotiation entry
-                    setContract(prevContract => {
-                      const updatedNegotiationHistory = [
-                        ...(prevContract.negotiationHistory || []),
-                        {
-                          proposedBy: user._id,
-                          proposedAt: new Date().toISOString(),
-                          message: offerData.message,
-                          proposedChanges: {
-                            pricePerUnit: offerData.pricePerUnit,
-                            quantity: offerData.quantity,
-                            deliveryDate: offerData.deliveryDate
-                          }
-                        }
-                      ];
-                      
-                      return {
-                        ...prevContract,
-                        negotiationHistory: updatedNegotiationHistory,
-                        status: 'negotiating' // Ensure status is set to negotiating
-                      };
-                    });
-                    
-                    // Close the modal and switch to negotiations tab
-                    setShowNegotiateModal(false);
-                    setActiveTab('negotiations');
-                  } else {
-                    // Handle case where response exists but success is false
-                    const errorMessage = response?.data?.message || "Failed to send counter offer. Please try again.";
-                    toast.error(errorMessage);
-                  }
-                } catch (apiError) {
-                  console.error("API Error sending counter offer:", apiError);
-                  toast.error("Failed to connect to the server. Please check your connection and try again.");
-                }
-              } catch (error) {
-                console.error("General error sending counter offer:", error);
-                toast.error("An error occurred while sending your counter offer. Please try again.");
-              } finally {
-                setCancelLoading(false);
-              }
-            }}>
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
-                    Price Per Unit (₹)
-                  </label>
-                  <input
-                    type="number"
-                    id="price"
-                    name="price"
-                    min="1"
-                    defaultValue={
-                      contract.negotiationHistory && contract.negotiationHistory.length > 0
-                        ? contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.pricePerUnit
-                        : contract.pricePerUnit
-                    }
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
-                    Quantity ({contract.unit})
-                  </label>
-                  <input
-                    type="number"
-                    id="quantity"
-                    name="quantity"
-                    min="1"
-                    defaultValue={
-                      contract.negotiationHistory && contract.negotiationHistory.length > 0
-                        ? contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.quantity
-                        : contract.quantity
-                    }
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="deliveryDate" className="block text-sm font-medium text-gray-700 mb-1">
-                    Delivery Date
-                  </label>
-                  <input
-                    type="date"
-                    id="deliveryDate"
-                    name="deliveryDate"
-                    defaultValue={(() => {
-                      try {
-                        const dateValue = contract.negotiationHistory && contract.negotiationHistory.length > 0
-                          ? contract.negotiationHistory[contract.negotiationHistory.length - 1].proposedChanges.deliveryDate
-                          : contract.deliveryDate;
-                          
-                        return new Date(dateValue).toISOString().split('T')[0];
-                      } catch (e) {
-                        return '';
-                      }
-                    })()}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
-                    Message (Optional)
-                  </label>
-                  <textarea
-                    id="message"
-                    name="message"
-                    rows="3"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Explain your counter offer..."
-                  ></textarea>
-                </div>
-                
-                <div className="flex justify-end space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowNegotiateModal(false)}
-                    className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={cancelLoading}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
-                  >
-                    {cancelLoading ? (
-                      <>Processing...</>
-                    ) : (
-                      <>
-                        <FaHandshake className="mr-2" /> Send Counter Offer
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -74,6 +74,7 @@ const contractSchema = new mongoose.Schema({
             values: [
                 "requested",      // Initial request from buyer
                 "negotiating",    // Under negotiation
+                "payment_pending", // Waiting for payment from buyer
                 "accepted",       // Accepted by both parties
                 "active",         // Contract is active, crop is being grown
                 "readyForHarvest", // Crop is ready for harvest

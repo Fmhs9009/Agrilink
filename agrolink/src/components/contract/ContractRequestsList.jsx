@@ -32,6 +32,12 @@ const ContractRequestItem = memo(({ request, style }) => {
             <FaClock className="mr-1" aria-hidden="true" /> Pending
           </span>
         );
+      case 'payment_pending':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800" role="status">
+            <FaMoneyBillWave className="mr-1" aria-hidden="true" /> Payment Required
+          </span>
+        );
       case 'completed':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800" role="status">
@@ -197,6 +203,15 @@ const ContractRequestsList = () => {
             aria-pressed={filter === 'pending'}
           >
             Pending
+          </button>
+          <button
+            onClick={() => handleFilterChange('payment_pending')}
+            className={`px-3 py-1 rounded-md text-sm ${
+              filter === 'payment_pending' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            aria-pressed={filter === 'payment_pending'}
+          >
+            Payment Pending
           </button>
           <button
             onClick={() => handleFilterChange('approved')}
