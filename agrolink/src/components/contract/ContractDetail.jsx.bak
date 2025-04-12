@@ -31,6 +31,14 @@ const ContractDetail = () => {
   const [cancelLoading, setCancelLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   
+  // Track payment stages
+  const [paymentStage, setPaymentStage] = useState('advance'); // 'advance', 'midterm', 'final'
+  const [paymentProgress, setPaymentProgress] = useState({
+    advanceCompleted: false,
+    midtermCompleted: false,
+    finalCompleted: false
+  });
+  
   // Utility function to format dates
   const formatDate = (dateString) => {
     if (!dateString) return 'Not specified';
@@ -59,6 +67,50 @@ const ContractDetail = () => {
       return `₹${amount}`;
     }
   };
+  
+  // Determine payment amounts based on contract terms
+  const calculatePaymentAmounts = () => {
+    if (!contract) return { advance: 0, midterm: 0, final: 0 };
+    
+    const totalAmount = contract.totalAmount || 0;
+    const terms = contract.paymentTerms || { advancePercentage: 20, midtermPercentage: 50, finalPercentage: 30 };
+    
+    return {
+      advance: totalAmount * (terms.advancePercentage / 100),
+      midterm: totalAmount * (terms.midtermPercentage / 100),
+      final: totalAmount * (terms.finalPercentage / 100)
+    };
+  };
+  
+  // Get current payment amount based on stage
+  const getCurrentPaymentAmount = () => {
+    const amounts = calculatePaymentAmounts();
+    return amounts[paymentStage] || 0;
+  };
+  
+  // Check payment stage based on contract status and progress
+  useEffect(() => {
+    if (contract) {
+      // Initialize payment progress based on contract state
+      // This is a simplified implementation - in a real app, you'd store these states in the backend
+      const progress = {
+        advanceCompleted: ['active', 'harvested', 'delivered', 'completed'].includes(contract.status),
+        midtermCompleted: ['delivered', 'completed'].includes(contract.status),
+        finalCompleted: ['completed'].includes(contract.status)
+      };
+      
+      setPaymentProgress(progress);
+      
+      // Set current payment stage
+      if (!progress.advanceCompleted) {
+        setPaymentStage('advance');
+      } else if (!progress.midtermCompleted && contract.status === 'harvested') {
+        setPaymentStage('midterm');
+      } else if (!progress.finalCompleted && contract.status === 'delivered') {
+        setPaymentStage('final');
+      }
+    }
+  }, [contract?.status]);
   
   // Check if active tab is no longer accessible due to contract status
   useEffect(() => {
@@ -403,251 +455,67 @@ const ContractDetail = () => {
     }
   };
 
-  // Define payment stage constants to prevent confusion
-  const PAYMENT_STAGE = {
-    ADVANCE: 'advance',
-    MIDTERM: 'midterm',
-    FINAL: 'final'
-  };
-
-  // Update handleConfirmPayment function to correctly determine payment stage
+  // Handle contract actions based on status and role
+  const handleAcceptContract = () => updateContractStatus('payment_pending');
+  const handleRejectContract = () => updateContractStatus('rejected');
+  const handleMarkAsHarvested = () => updateContractStatus('harvested');
+  const handleMarkAsDelivered = () => updateContractStatus('delivered');
+  const handleMarkAsCompleted = () => updateContractStatus('completed');
+  
+  // Updated to handle different payment stages
   const handleConfirmPayment = async () => {
     try {
-      // Determine which payment stage we're in based on contract.currentPaymentStage
-      // which should be set correctly in state transitions
-      let paymentStage = contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE;
-      let paymentPercentage = 0;
+      const paymentAmount = getCurrentPaymentAmount();
+      const paymentStageName = paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1);
       
-      // Set correct payment percentage based on stage
-      if (paymentStage === PAYMENT_STAGE.ADVANCE) {
-        paymentPercentage = contract.paymentTerms?.advancePercentage || 20;
-      } else if (paymentStage === PAYMENT_STAGE.MIDTERM) {
-        paymentPercentage = contract.paymentTerms?.midtermPercentage || 50;
-      } else if (paymentStage === PAYMENT_STAGE.FINAL) {
-        paymentPercentage = contract.paymentTerms?.finalPercentage || 30;
-      }
+      toast.success(`${paymentStageName} payment (${formatCurrency(paymentAmount)}) notification sent to the farmer`);
       
-      // Calculate payment amount based on percentage
-      const paymentAmount = (contract.totalAmount * paymentPercentage / 100).toFixed(2);
-      
-      // Update UI to indicate payment is waiting for verification
-      toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment initiated (${paymentPercentage}%: ₹${paymentAmount})`);
-      
+      // In a real app, you'd update this in the backend
+      // For now, we'll just update the UI
       setContract(prevContract => ({
         ...prevContract,
         paymentSubmitted: true,
-        currentPaymentStage: paymentStage,
-        currentPaymentAmount: paymentAmount,
-        currentPaymentPercentage: paymentPercentage
+        currentPaymentStage: paymentStage
       }));
     } catch (error) {
-      toast.error(`Failed to process payment: ${error.message}`);
+      toast.error(`Failed to process ${paymentStage} payment`);
       console.error(error);
     }
   };
 
-  // Fix handleVerifyPayment to properly transition stages
+  // Updated to handle different payment stages
   const handleVerifyPayment = async () => {
-    // For farmer to verify payment is received
-    if (window.confirm('Confirm that you have received the payment?')) {
+    const paymentStageName = paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1);
+    
+    if (window.confirm(`Confirm that you have received the ${paymentStageName} payment?`)) {
       try {
-        // Default to 'advance' if currentPaymentStage is not defined
-        const currentStage = contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE;
-        let nextStatus = 'active'; // Default next status
-        
-        // Add progress update to track payment
-        const progressUpdate = {
-          updateType: `payment_${currentStage}`,
-          description: `${currentStage.charAt(0).toUpperCase() + currentStage.slice(1)} payment of ${formatCurrency(contract.currentPaymentAmount || 0)} (${contract.currentPaymentPercentage || 0}%) received and verified.`
-        };
-        
-        // Determine next status based on payment stage
-        if (currentStage === PAYMENT_STAGE.ADVANCE) {
-          nextStatus = 'active'; // After advance payment, contract becomes active
-        } else if (currentStage === PAYMENT_STAGE.MIDTERM) {
-          nextStatus = 'harvested'; // After midterm payment, maintain harvested status
-        } else if (currentStage === PAYMENT_STAGE.FINAL) {
-          nextStatus = 'completed'; // After final payment, contract is completed
+        // Different actions based on payment stage
+        if (paymentStage === 'advance') {
+          // First payment verification - set to active
+          const response = await updateContractStatus('active');
+          if (response && response.success) {
+            toast.success('Advance payment verified! Contract is now active.');
+            setPaymentProgress(prev => ({ ...prev, advanceCompleted: true }));
+          }
+        } else if (paymentStage === 'midterm') {
+          // After harvest payment - back to active with midterm completed
+          const response = await updateContractStatus('active');
+          if (response && response.success) {
+            toast.success('Midterm payment verified! Contract status updated.');
+            setPaymentProgress(prev => ({ ...prev, midtermCompleted: true }));
+          }
+        } else if (paymentStage === 'final') {
+          // Final payment - mark as completed
+          const response = await updateContractStatus('completed');
+          if (response && response.success) {
+            toast.success('Final payment verified! Contract is now complete.');
+            setPaymentProgress(prev => ({ ...prev, finalCompleted: true }));
+          }
         }
-        
-        // Update the contract status
-        await updateContractStatus(nextStatus);
-        
-        // Try to store progress update
-        try {
-          const formData = new FormData();
-          formData.append('updateType', progressUpdate.updateType);
-          formData.append('description', progressUpdate.description);
-          await contractService.addProgressUpdate(contract._id, formData);
-        } catch (progressError) {
-          console.error('Error adding payment progress update:', progressError);
-        }
-        
-        toast.success(`${currentStage.charAt(0).toUpperCase() + currentStage.slice(1)} payment verified! Contract ${nextStatus === 'active' ? 'is now active' : 'updated accordingly'}.`);
-        
-        // Update local contract state with payment history
-        setContract(prevContract => ({
-          ...prevContract,
-          status: nextStatus,
-          paymentSubmitted: false,
-          paymentHistory: [...(prevContract.paymentHistory || []), {
-            stage: currentStage,
-            amount: contract.currentPaymentAmount || 0,
-            percentage: contract.currentPaymentPercentage || 0,
-            verifiedAt: new Date()
-          }],
-          progressUpdates: [...(prevContract.progressUpdates || []), {
-            updateType: progressUpdate.updateType,
-            description: progressUpdate.description,
-            updatedAt: new Date()
-          }],
-          currentPaymentStage: null,
-          currentPaymentAmount: null,
-          currentPaymentPercentage: null
-        }));
       } catch (error) {
-        toast.error(`Failed to verify payment: ${error.message}`);
+        toast.error(`Failed to verify ${paymentStageName} payment`);
         console.error(error);
       }
-    }
-  };
-
-  // Fix handleAcceptContract to set correct payment stage
-  const handleAcceptContract = async () => {
-    try {
-      // Update contract status to payment_pending
-      await updateContractStatus('payment_pending');
-      toast.success('Contract accepted. Waiting for advance payment.');
-      
-      // Set the correct payment stage (advance) when accepting a contract
-      setContract(prevContract => ({
-        ...prevContract,
-        status: 'payment_pending',
-        currentPaymentStage: PAYMENT_STAGE.ADVANCE
-      }));
-    } catch (error) {
-      toast.error(`Failed to accept contract: ${error.message}`);
-      console.error(error);
-    }
-  };
-
-  // Simplify handleMarkAsHarvested to transition correctly
-  const handleMarkAsHarvested = async () => {
-    if (!window.confirm('Are you sure you want to mark this contract as harvested?')) {
-      return;
-    }
-    
-    setCancelLoading(true);
-    try {
-      // Update contract status to harvested
-      await updateContractStatus('harvested');
-      toast.success('Contract marked as harvested');
-      
-      // Add progress update
-      try {
-        const formData = new FormData();
-        formData.append('updateType', 'harvesting');
-        formData.append('description', 'Crop has been harvested and is ready for processing.');
-        await contractService.addProgressUpdate(contract._id, formData);
-      } catch (progressError) {
-        console.error('Error adding harvest progress update:', progressError);
-      }
-      
-      // Update contract with new status and progress update
-      setContract(prevContract => ({
-        ...prevContract,
-        status: 'harvested',
-        progressUpdates: [...(prevContract.progressUpdates || []), {
-          updateType: 'harvesting',
-          description: 'Crop has been harvested and is ready for processing.',
-          updatedAt: new Date()
-        }]
-      }));
-      
-      // Check if midterm payment is needed
-      if ((contract.paymentTerms?.midtermPercentage || 50) > 0) {
-        // Simple delay to ensure the status update completes
-        setTimeout(async () => {
-          try {
-            await updateContractStatus('payment_pending');
-            toast.info('Waiting for midterm payment from buyer');
-            
-            // Update contract locally with correct payment stage
-            setContract(prevContract => ({
-              ...prevContract,
-              status: 'payment_pending',
-              currentPaymentStage: PAYMENT_STAGE.MIDTERM
-            }));
-          } catch (paymentError) {
-            console.error('Error transitioning to payment_pending:', paymentError);
-          }
-        }, 1000);
-      }
-    } catch (error) {
-      console.error('Error during harvest marking:', error);
-      toast.error(`Failed to mark as harvested: ${error.message}`);
-    } finally {
-      setCancelLoading(false);
-    }
-  };
-
-  // Simplify handleMarkAsDelivered for correct transitions
-  const handleMarkAsDelivered = async () => {
-    if (!window.confirm('Are you sure you want to mark this contract as delivered?')) {
-      return;
-    }
-    
-    setCancelLoading(true);
-    try {
-      // Update contract status to delivered
-      await updateContractStatus('delivered');
-      toast.success('Contract marked as delivered');
-      
-      // Add progress update
-      try {
-        const formData = new FormData();
-        formData.append('updateType', 'shipping');
-        formData.append('description', 'Crop has been delivered to the buyer.');
-        await contractService.addProgressUpdate(contract._id, formData);
-      } catch (progressError) {
-        console.error('Error adding delivery progress update:', progressError);
-      }
-      
-      // Update contract with new status and progress update
-      setContract(prevContract => ({
-        ...prevContract,
-        status: 'delivered',
-        progressUpdates: [...(prevContract.progressUpdates || []), {
-          updateType: 'shipping',
-          description: 'Crop has been delivered to the buyer.',
-          updatedAt: new Date()
-        }]
-      }));
-      
-      // Check if final payment is needed
-      if ((contract.paymentTerms?.finalPercentage || 30) > 0) {
-        // Simple delay to ensure the status update completes
-        setTimeout(async () => {
-          try {
-            await updateContractStatus('payment_pending');
-            toast.info('Waiting for final payment from buyer. Note: Payment should be made once delivery is received.');
-            
-            // Update contract locally with correct payment stage
-            setContract(prevContract => ({
-              ...prevContract,
-              status: 'payment_pending',
-              currentPaymentStage: PAYMENT_STAGE.FINAL
-            }));
-          } catch (paymentError) {
-            console.error('Error transitioning to payment_pending:', paymentError);
-          }
-        }, 1000);
-      }
-    } catch (error) {
-      console.error('Error during delivery marking:', error);
-      toast.error(`Failed to mark as delivered: ${error.message}`);
-    } finally {
-      setCancelLoading(false);
     }
   };
 
@@ -688,11 +556,6 @@ const ContractDetail = () => {
 
   // Add this helper function after the existing helper functions
   const canAcceptContract = (contract, isFarmer) => {
-    // Check if contract is undefined
-    if (!contract) {
-      return false;
-    }
-    
     // If contract is already cancelled or approved, no one can accept
     if (['cancelled', 'accepted'].includes(contract.status)) {
       return false;
@@ -720,38 +583,6 @@ const ContractDetail = () => {
     
     // If buyer made the last offer, only farmer can accept
     return isFarmer;
-  };
-
-  // Function to check if midterm payment is completed
-  const isMidtermPaymentCompleted = (contract) => {
-    return contract && 
-           contract.paymentHistory && 
-           contract.paymentHistory.some(payment => payment.stage === PAYMENT_STAGE.MIDTERM);
-  };
-
-  // Add back simple reject and complete functions
-  const handleRejectContract = async () => {
-    if (window.confirm('Are you sure you want to reject this contract?')) {
-      try {
-        await updateContractStatus('rejected');
-        toast.success('Contract has been rejected');
-      } catch (error) {
-        toast.error(`Failed to reject contract: ${error.message}`);
-        console.error(error);
-      }
-    }
-  };
-
-  const handleMarkAsCompleted = async () => {
-    if (window.confirm('Are you sure you want to mark this contract as completed?')) {
-      try {
-        await updateContractStatus('completed');
-        toast.success('Contract has been marked as completed');
-      } catch (error) {
-        toast.error(`Failed to complete contract: ${error.message}`);
-        console.error(error);
-      }
-    }
   };
 
   if (loading || isLoading) {
@@ -909,6 +740,18 @@ const ContractDetail = () => {
           >
             Negotiation History
           </button>
+          
+          {/* Only show Progress tab for active contracts */}
+          {['accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract.status) && (
+            <button 
+              className={`px-4 py-3 text-sm font-medium ${activeTab === 'progress' 
+                ? 'border-b-2 border-green-600 text-green-600' 
+                : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
+              onClick={() => setActiveTab('progress')}
+            >
+              Progress Updates
+            </button>
+          )}
         </nav>
       </div>
 
@@ -965,56 +808,54 @@ const ContractDetail = () => {
             {isBuyer && contract.status === 'payment_pending' && (
               <div className="bg-white rounded-lg border border-yellow-300 p-4 mb-6">
                 <h3 className="text-lg font-medium text-gray-800 mb-2 flex items-center">
-                  <FaMoneyBillWave className="mr-2 text-yellow-600" /> 
-                  {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? 'Advance Payment Required' :
-                   contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? 'Midterm Payment Required' :
-                   contract.currentPaymentStage === PAYMENT_STAGE.FINAL ? 'Final Payment Required' : 'Payment Required'}
+                  <FaMoneyBillWave className="mr-2 text-yellow-600" /> Payment Required
                 </h3>
                 <p className="text-gray-600 mb-4">
-                  {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE 
-                    ? 'Please complete the advance payment to activate this contract.' 
-                    : contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM
-                      ? 'The crop has been harvested. Please complete the midterm payment as per agreement.'
-                      : 'The crop has been delivered. Please complete the final payment to complete the contract. Please verify that you have received the delivery before making payment.'}
+                  Please complete the {paymentStage} payment to {paymentStage === 'advance' ? 'activate' : 'continue'} this contract. 
+                  The farmer will be notified once payment is confirmed.
                 </p>
                 <div className="border-t border-gray-200 pt-4 mt-4">
                   <h4 className="font-medium text-gray-700 mb-2">Payment Details:</h4>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-gray-600">Payment Stage:</span>
-                    <span className="font-medium">
-                      {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? 'Advance Payment' :
-                       contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? 'Midterm Payment' :
-                       contract.currentPaymentStage === PAYMENT_STAGE.FINAL ? 'Final Payment' : 'Payment'}
-                    </span>
+                  
+                  <div className="space-y-2 mb-3">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-gray-600">Payment Stage:</span>
+                      <span className="font-medium capitalize">{paymentStage}</span>
+                    </div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-gray-600">Amount Due:</span>
+                      <span className="font-medium">{formatCurrency(getCurrentPaymentAmount())}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Total Contract Value:</span>
+                      <span className="font-medium">{formatCurrency(contract.totalAmount)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-gray-600">Percentage:</span>
-                    <span className="font-medium">
-                      {contract.currentPaymentPercentage || 
-                       (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
-                        contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
-                        contract.paymentTerms?.finalPercentage || 30)}%
-                    </span>
-                  </div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-gray-600">Amount:</span>
-                    <span className="font-medium">
-                      {formatCurrency(contract.currentPaymentAmount || 
-                        ((contract.totalAmount * (contract.currentPaymentPercentage || 
-                          (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
-                           contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
-                           contract.paymentTerms?.finalPercentage || 30)) / 100).toFixed(2))
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-gray-600">Total Contract Value:</span>
-                    <span className="font-medium">{formatCurrency(contract.totalAmount)}</span>
+                  
+                  <div className="bg-yellow-50 p-3 rounded-md mb-4">
+                    <h5 className="text-sm font-medium text-yellow-800 mb-1">Payment Structure</h5>
+                    <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className={`p-2 rounded ${paymentStage === 'advance' ? 'bg-yellow-100' : (paymentProgress.advanceCompleted ? 'bg-green-100' : 'bg-gray-100')}`}>
+                        <div className="font-medium">Advance</div>
+                        <div>{formatCurrency(calculatePaymentAmounts().advance)}</div>
+                        <div className="text-xs">{contract.paymentTerms?.advancePercentage || 20}%</div>
+                      </div>
+                      <div className={`p-2 rounded ${paymentStage === 'midterm' ? 'bg-yellow-100' : (paymentProgress.midtermCompleted ? 'bg-green-100' : 'bg-gray-100')}`}>
+                        <div className="font-medium">Midterm</div>
+                        <div>{formatCurrency(calculatePaymentAmounts().midterm)}</div>
+                        <div className="text-xs">{contract.paymentTerms?.midtermPercentage || 50}%</div>
+                      </div>
+                      <div className={`p-2 rounded ${paymentStage === 'final' ? 'bg-yellow-100' : (paymentProgress.finalCompleted ? 'bg-green-100' : 'bg-gray-100')}`}>
+                        <div className="font-medium">Final</div>
+                        <div>{formatCurrency(calculatePaymentAmounts().final)}</div>
+                        <div className="text-xs">{contract.paymentTerms?.finalPercentage || 30}%</div>
+                      </div>
+                    </div>
                   </div>
                   
                   <button
                     onClick={() => {
-                      if (window.confirm(`Have you completed the ${contract.currentPaymentStage || 'advance'} payment? Click Yes to confirm.`)) {
+                      if (window.confirm(`Have you completed the ${paymentStage} payment of ${formatCurrency(getCurrentPaymentAmount())}? Click Yes to confirm.`)) {
                         handleConfirmPayment();
                       }
                     }}
@@ -1031,7 +872,7 @@ const ContractDetail = () => {
                       </>
                     ) : (
                       <>
-                        <FaMoneyBillWave className="mr-2" /> Proceed to Payment
+                        <FaMoneyBillWave className="mr-2" /> Proceed to {paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment
                       </>
                     )}
                   </button>
@@ -1043,52 +884,43 @@ const ContractDetail = () => {
             {isFarmer && contract.status === 'payment_pending' && (
               <div className="bg-white rounded-lg border border-yellow-300 p-4 mb-6">
                 <h3 className="text-lg font-medium text-gray-800 mb-2 flex items-center">
-                  <FaMoneyBillWave className="mr-2 text-yellow-600" /> 
-                  {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? 'Awaiting Advance Payment' :
-                   contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? 'Awaiting Midterm Payment' :
-                   contract.currentPaymentStage === PAYMENT_STAGE.FINAL ? 'Awaiting Final Payment' : 'Awaiting Payment'}
+                  <FaMoneyBillWave className="mr-2 text-yellow-600" /> Awaiting {paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment
                 </h3>
                 <p className="text-gray-600 mb-4">
                   {contract.paymentSubmitted 
-                    ? `The buyer has confirmed making the ${contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE} payment. Please verify once you've received it.`
-                    : `Waiting for buyer to complete ${contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE} payment. If you have already received the payment, you can manually verify below.`}
+                    ? `The buyer has confirmed making the ${paymentStage} payment of ${formatCurrency(getCurrentPaymentAmount())}. Please verify once you've received it.`
+                    : `Waiting for buyer to complete ${paymentStage} payment of ${formatCurrency(getCurrentPaymentAmount())}. If you have already received the payment, you can manually verify below.`}
                 </p>
                 <div className="border-t border-gray-200 pt-4 mt-4">
-                  <h4 className="font-medium text-gray-700 mb-2">Payment Details:</h4>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-gray-600">Payment Stage:</span>
-                    <span className="font-medium">
-                      {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? 'Advance Payment' :
-                       contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? 'Midterm Payment' :
-                       contract.currentPaymentStage === PAYMENT_STAGE.FINAL ? 'Final Payment' : 'Payment'}
-                    </span>
+                  <div className="bg-yellow-50 p-3 rounded-md mb-4">
+                    <h5 className="text-sm font-medium text-yellow-800 mb-1">Payment Structure</h5>
+                    <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className={`p-2 rounded ${paymentStage === 'advance' ? 'bg-yellow-100' : (paymentProgress.advanceCompleted ? 'bg-green-100' : 'bg-gray-100')}`}>
+                        <div className="font-medium">Advance</div>
+                        <div>{formatCurrency(calculatePaymentAmounts().advance)}</div>
+                        <div className="text-xs">{contract.paymentTerms?.advancePercentage || 20}%</div>
+                      </div>
+                      <div className={`p-2 rounded ${paymentStage === 'midterm' ? 'bg-yellow-100' : (paymentProgress.midtermCompleted ? 'bg-green-100' : 'bg-gray-100')}`}>
+                        <div className="font-medium">Midterm</div>
+                        <div>{formatCurrency(calculatePaymentAmounts().midterm)}</div>
+                        <div className="text-xs">{contract.paymentTerms?.midtermPercentage || 50}%</div>
+                      </div>
+                      <div className={`p-2 rounded ${paymentStage === 'final' ? 'bg-yellow-100' : (paymentProgress.finalCompleted ? 'bg-green-100' : 'bg-gray-100')}`}>
+                        <div className="font-medium">Final</div>
+                        <div>{formatCurrency(calculatePaymentAmounts().final)}</div>
+                        <div className="text-xs">{contract.paymentTerms?.finalPercentage || 30}%</div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-gray-600">Percentage:</span>
-                    <span className="font-medium">
-                      {contract.currentPaymentPercentage || 
-                       (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
-                        contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
-                        contract.paymentTerms?.finalPercentage || 30)}%
-                    </span>
-                  </div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-gray-600">Amount:</span>
-                    <span className="font-medium">
-                      {formatCurrency(contract.currentPaymentAmount || 
-                        ((contract.totalAmount * (contract.currentPaymentPercentage || 
-                          (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
-                           contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
-                           contract.paymentTerms?.finalPercentage || 30)) / 100).toFixed(2))
-                      )}
-                    </span>
-                  </div>
-
+                  
+                  <h4 className="font-medium text-gray-700 mb-2">Current Payment:</h4>
+                  <div className="font-medium text-gray-800 mb-4">{formatCurrency(getCurrentPaymentAmount())}</div>
+                  
                   <button
                     onClick={handleVerifyPayment}
                     className="mt-2 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 flex items-center justify-center w-full"
                   >
-                    <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? "Verify Payment Received" : "Payment Already Received"}
+                    <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? `Verify ${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment Received` : `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment Already Received`}
                   </button>
                 </div>
               </div>
@@ -1221,11 +1053,11 @@ const ContractDetail = () => {
                     <div className="absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 border-green-600 bg-white"></div>
                     <div>
                       <h4 className="font-medium text-gray-800">Contract Requested</h4>
-                <p className="text-sm text-gray-600">
+                      <p className="text-sm text-gray-600">
                         {formatDate(contract.createdAt || contract.requestDate)}
-                </p>
-              </div>
-            </div>
+                      </p>
+                    </div>
+                  </div>
 
                   {/* Negotiation / Acceptance Phase */}
                   <div className="relative">
@@ -1236,7 +1068,7 @@ const ContractDetail = () => {
                           ? 'border-red-500 bg-red-100' 
                           : 'border-green-600 bg-white'}`}>
                     </div>
-              <div>
+                    <div>
                       <h4 className="font-medium text-gray-800">
                         {contract.status === 'negotiating' 
                           ? 'Under Negotiation' 
@@ -1246,7 +1078,7 @@ const ContractDetail = () => {
                               ? 'Awaiting Approval'
                               : 'Contract Accepted'}
                       </h4>
-                <p className="text-sm text-gray-600">
+                      <p className="text-sm text-gray-600">
                         {contract.status === 'requested' 
                           ? 'Pending farmer approval' 
                           : contract.status === 'negotiating' 
@@ -1254,238 +1086,182 @@ const ContractDetail = () => {
                             : contract.status === 'accepted' || contract.status === 'active'
                               ? `Accepted on ${formatDate(contract.updatedAt)}`
                               : 'No longer active'}
-                </p>
-              </div>
-            </div>
+                      </p>
+                    </div>
+                  </div>
 
-                  {/* Payment Timeline - based on payment terms */}
-                  {(['payment_pending', 'active', 'readyForHarvest', 'harvested', 'delivered', 'completed'].includes(contract.status)) && (
-                    <>
-                      {/* Advance Payment */}
-                      <div className="relative">
-                        <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                          ${contract.status === 'payment_pending' && (!contract.paymentHistory || !contract.paymentHistory.some(p => p.stage === 'advance'))
-                            ? 'border-amber-500 bg-amber-100' 
-                            : (contract.paymentHistory && contract.paymentHistory.some(p => p.stage === 'advance') || contract.status !== 'payment_pending')
-                              ? 'border-green-600 bg-white'
-                              : 'border-gray-300 bg-gray-100'}`}>
-                        </div>
-              <div>
-                          <h4 className="font-medium text-gray-800 flex items-center">
-                            <FaMoneyBillWave className="mr-1 text-green-600" />
-                            Advance Payment ({contract.paymentTerms?.advancePercentage || 20}%)
-                          </h4>
-                          <p className="text-sm text-gray-600">
-                            {(contract.paymentHistory && contract.paymentHistory.some(p => p.stage === 'advance'))
-                              ? `Completed on ${formatDate(contract.paymentHistory.find(p => p.stage === 'advance').verifiedAt)}`
-                              : contract.status === 'payment_pending' && (!contract.paymentHistory || !contract.paymentHistory.some(p => p.stage === 'advance'))
-                                ? contract.paymentSubmitted && contract.currentPaymentStage === 'advance'
-                                  ? 'Payment notification sent, awaiting verification'
-                                  : 'Waiting for buyer to complete advance payment'
-                                : ['active', 'harvested', 'readyForHarvest', 'delivered', 'completed'].includes(contract.status)
-                                  ? 'Completed'
-                                  : 'Due after contract acceptance'}
-                </p>
-              </div>
-            </div>
-
-                      {/* Inside the Growing Phase section in the Timeline */}
-                      <div className="relative">
-                        <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                          ${contract.status === 'active'
-                            ? 'border-green-500 bg-green-100' 
-                            : ['harvested', 'readyForHarvest', 'delivered', 'completed'].includes(contract.status)
-                              ? 'border-green-600 bg-white'
-                              : 'border-gray-300 bg-gray-100'}`}>
-                        </div>
-                <div>
-                          <h4 className="font-medium text-gray-800 flex items-center justify-between">
-                            <span className="flex items-center">
-                              <FaLeaf className="mr-1 text-green-600" />
-                              Growing Phase
-                            </span>
-                            {/* Add Mark as Harvested button for farmer only when contract is active and not already harvested */}
-                            {isFarmer && contract.status === 'active' && !['harvested', 'delivered', 'completed'].includes(contract.status) && (
-                              <button 
-                                onClick={handleMarkAsHarvested}
-                                disabled={cancelLoading}
-                                className="ml-4 px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
-                              >
-                                <FaTractor className="mr-1" /> Mark as Harvested
-                              </button>
-                            )}
-                          </h4>
-                          <p className="text-sm text-gray-600">
-                            {contract.status === 'active'
-                              ? 'In progress'
-                              : ['harvested', 'readyForHarvest', 'delivered', 'completed'].includes(contract.status)
-                                ? 'Completed'
-                                : 'Starts after advance payment'}
-                            {contract.expectedHarvestDate && [
-                              ' (Expected completion: ',
-                              formatDate(contract.expectedHarvestDate),
-                              ')'
-                            ].join('')}
-                  </p>
-                </div>
-              </div>
-
-                      {/* Inside the Harvest section in the Timeline */}
-                      <div className="relative">
-                        <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                          ${contract.status === 'readyForHarvest'
-                            ? 'border-amber-500 bg-amber-100' 
-                            : ['harvested', 'delivered', 'completed'].includes(contract.status)
-                              ? 'border-green-600 bg-white'
-                              : 'border-gray-300 bg-gray-100'}`}>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-gray-800 flex items-center justify-between">
-                            <span className="flex items-center">
-                              <FaTractor className="mr-1 text-green-600" />
-                              Harvest
-                            </span>
-                            {/* Show Mark as Delivered button only after midterm payment is verified */}
-                            {isFarmer && 
-                             contract.status === 'harvested' && 
-                             contract.status !== 'payment_pending' && 
-                             !['delivered', 'completed'].includes(contract.status) &&
-                             isMidtermPaymentCompleted(contract) && (
-                              <button 
-                                onClick={handleMarkAsDelivered}
-                                disabled={cancelLoading}
-                                className="ml-4 px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
-                              >
-                                <FaShippingFast className="mr-1" /> Out for Delivery
-                              </button>
-                            )}
-                          </h4>
-                          <p className="text-sm text-gray-600">
-                            {contract.status === 'readyForHarvest'
-                              ? 'Ready for harvest'
-                              : ['harvested', 'delivered', 'completed'].includes(contract.status)
-                                ? 'Harvested on ' + formatDate(contract.updatedAt)
-                                : `Expected: ${formatDate(contract.expectedHarvestDate)}`}
-                            {/* Add indicator if waiting for midterm payment */}
-                            {contract.status === 'harvested' && !isMidtermPaymentCompleted(contract) && contract.status !== 'payment_pending' && 
-                             (contract.paymentTerms?.midtermPercentage || 50) > 0 && ' (Waiting for midterm payment)'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Midterm Payment - Only if midtermPercentage > 0 */}
-                      {(contract.paymentTerms?.midtermPercentage || 50) > 0 && (
-                        <div className="relative">
-                          <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                            ${contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM
-                              ? 'border-amber-500 bg-amber-100' 
-                              : (contract.paymentHistory && contract.paymentHistory.some(p => p.stage === PAYMENT_STAGE.MIDTERM))
-                                ? 'border-green-600 bg-white'
-                                : ['delivered', 'completed'].includes(contract.status)
-                                  ? 'border-green-600 bg-white'
-                                  : 'border-gray-300 bg-gray-100'}`}>
-                          </div>
-                <div>
-                            <h4 className="font-medium text-gray-800 flex items-center">
-                              <FaMoneyBillWave className="mr-1 text-green-600" />
-                              Midterm Payment ({contract.paymentTerms?.midtermPercentage || 50}%)
-                            </h4>
-                            <p className="text-sm text-gray-600">
-                              {(contract.paymentHistory && contract.paymentHistory.some(p => p.stage === PAYMENT_STAGE.MIDTERM))
-                                ? `Completed on ${formatDate(contract.paymentHistory.find(p => p.stage === PAYMENT_STAGE.MIDTERM).verifiedAt)}`
-                                : contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM
-                                  ? contract.paymentSubmitted 
-                                    ? 'Payment notification sent, awaiting verification'
-                                    : 'Waiting for buyer to complete midterm payment'
-                                  : ['harvested', 'delivered', 'completed'].includes(contract.status) && !contract.paymentHistory?.some(p => p.stage === PAYMENT_STAGE.MIDTERM)
-                                    ? 'Pending payment'
-                                    : 'Due after harvest'}
-                  </p>
-                </div>
-              </div>
-            )}
-
-                      {/* Delivery */}
-                      <div className="relative">
-                        <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                          ${contract.status === 'readyForDelivery'
-                            ? 'border-amber-500 bg-amber-100' 
-                            : ['delivered', 'completed'].includes(contract.status)
-                              ? 'border-green-600 bg-white'
-                              : 'border-gray-300 bg-gray-100'}`}>
-                        </div>
-              <div>
-                          <h4 className="font-medium text-gray-800 flex items-center">
-                            <FaShippingFast className="mr-1 text-indigo-600" />
-                            Delivery
-                          </h4>
-                          <p className="text-sm text-gray-600">
-                            {contract.status === 'readyForDelivery'
-                              ? 'Ready for delivery'
-                              : ['delivered', 'completed'].includes(contract.status)
-                                ? 'Delivered on ' + formatDate(contract.updatedAt)
-                                : `Expected: ${formatDate(contract.deliveryDate)}`}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Final Payment - Only if finalPercentage > 0 */}
-                      {(contract.paymentTerms?.finalPercentage || 30) > 0 && (
-                        <div className="relative">
-                          <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                            ${contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.FINAL
-                              ? 'border-amber-500 bg-amber-100' 
-                              : (contract.paymentHistory && contract.paymentHistory.some(p => p.stage === PAYMENT_STAGE.FINAL))
-                                ? 'border-green-600 bg-white'
-                                : (contract.status === 'completed')
-                                  ? 'border-green-600 bg-white'
-                                  : 'border-gray-300 bg-gray-100'}`}>
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-gray-800 flex items-center">
-                              <FaMoneyBillWave className="mr-1 text-green-600" />
-                              Final Payment ({contract.paymentTerms?.finalPercentage || 30}%)
-                            </h4>
-                            <p className="text-sm text-gray-600">
-                              {(contract.paymentHistory && contract.paymentHistory.some(p => p.stage === PAYMENT_STAGE.FINAL))
-                                ? `Completed on ${formatDate(contract.paymentHistory.find(p => p.stage === PAYMENT_STAGE.FINAL).verifiedAt)}`
-                                : contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.FINAL
-                                  ? contract.paymentSubmitted 
-                                    ? 'Payment notification sent, awaiting verification'
-                                    : 'Waiting for buyer to complete final payment'
-                                  : contract.status === 'completed' 
-                                    ? 'Completed' 
-                                    : 'Due upon delivery'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Completion */}
-                      <div className="relative">
-                        <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                          ${contract.status === 'completed'
+                  {/* Advance Payment Phase */}
+                  {(['payment_pending', 'active', 'harvested', 'delivered', 'completed'].includes(contract.status)) && (
+                    <div className="relative">
+                      <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                        ${contract.status === 'payment_pending' && paymentStage === 'advance'
+                          ? 'border-amber-500 bg-amber-100' 
+                          : paymentProgress.advanceCompleted
                             ? 'border-green-600 bg-green-100'
                             : 'border-gray-300 bg-gray-100'}`}>
-                  </div>
-                        <div>
-                          <h4 className="font-medium text-gray-800 flex items-center">
-                            <FaCheckCircle className="mr-1 text-green-600" />
-                            Contract Completion
-                          </h4>
-                          <p className="text-sm text-gray-600">
-                            {contract.status === 'completed'
-                              ? `Completed on ${formatDate(contract.updatedAt)}`
-                              : 'Pending final payment and delivery confirmation'}
-                          </p>
-                        </div>
                       </div>
-                    </>
+                      <div>
+                        <h4 className="font-medium text-gray-800">
+                          {paymentProgress.advanceCompleted 
+                            ? 'Advance Payment Completed'
+                            : contract.status === 'payment_pending' && paymentStage === 'advance'
+                              ? 'Advance Payment Pending'
+                              : 'Advance Payment'}
+                        </h4>
+                        <p className="text-sm text-gray-600">
+                          {paymentProgress.advanceCompleted
+                            ? `Payment of ${formatCurrency(calculatePaymentAmounts().advance)} (${contract.paymentTerms?.advancePercentage || 20}%) verified`
+                            : contract.status === 'payment_pending' && paymentStage === 'advance'
+                              ? contract.paymentSubmitted 
+                                ? 'Payment notification sent, awaiting verification'
+                                : `Waiting for advance payment of ${formatCurrency(calculatePaymentAmounts().advance)} (${contract.paymentTerms?.advancePercentage || 20}%)`
+                              : `${formatCurrency(calculatePaymentAmounts().advance)} (${contract.paymentTerms?.advancePercentage || 20}%) to be paid upon contract acceptance`}
+                        </p>
+                      </div>
+                    </div>
                   )}
+
+                  {/* Growing Phase */}
+                  {(['active', 'harvested', 'delivered', 'completed'].includes(contract.status)) && (
+                    <div className="relative">
+                      <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                        ${contract.status === 'active'
+                          ? 'border-green-500 bg-green-100' 
+                          : ['harvested', 'delivered', 'completed'].includes(contract.status)
+                            ? 'border-green-600 bg-white'
+                            : 'border-gray-300 bg-gray-100'}`}>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-800">Growing Phase</h4>
+                        <p className="text-sm text-gray-600">
+                          {contract.status === 'active'
+                            ? 'Crop is currently being grown'
+                            : ['harvested', 'delivered', 'completed'].includes(contract.status)
+                              ? 'Growing phase completed'
+                              : 'Growing phase awaiting advance payment'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expected Harvest */}
+                  <div className="relative">
+                    <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                      ${contract.status === 'harvested' || contract.status === 'delivered' || contract.status === 'completed'
+                        ? 'border-green-600 bg-white'
+                        : ['accepted', 'active'].includes(contract.status)
+                          ? 'border-yellow-500 bg-yellow-100'
+                          : 'border-gray-300 bg-gray-100'}`}>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800">Harvest</h4>
+                      <p className="text-sm text-gray-600">
+                        {contract.status === 'harvested' || contract.status === 'delivered' || contract.status === 'completed'
+                          ? 'Crop has been harvested'
+                          : `Expected on ${formatDate(contract.expectedHarvestDate)}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Midterm Payment Phase */}
+                  {(['harvested', 'delivered', 'completed'].includes(contract.status) || (contract.status === 'payment_pending' && paymentStage === 'midterm')) && (
+                    <div className="relative">
+                      <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                        ${contract.status === 'payment_pending' && paymentStage === 'midterm'
+                          ? 'border-amber-500 bg-amber-100' 
+                          : paymentProgress.midtermCompleted
+                            ? 'border-green-600 bg-green-100'
+                            : 'border-gray-300 bg-gray-100'}`}>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-800">
+                          {paymentProgress.midtermCompleted 
+                            ? 'Midterm Payment Completed'
+                            : contract.status === 'payment_pending' && paymentStage === 'midterm'
+                              ? 'Midterm Payment Pending'
+                              : 'Midterm Payment'}
+                        </h4>
+                        <p className="text-sm text-gray-600">
+                          {paymentProgress.midtermCompleted
+                            ? `Payment of ${formatCurrency(calculatePaymentAmounts().midterm)} (${contract.paymentTerms?.midtermPercentage || 50}%) verified`
+                            : contract.status === 'payment_pending' && paymentStage === 'midterm'
+                              ? contract.paymentSubmitted 
+                                ? 'Payment notification sent, awaiting verification'
+                                : `Waiting for midterm payment of ${formatCurrency(calculatePaymentAmounts().midterm)} (${contract.paymentTerms?.midtermPercentage || 50}%)`
+                              : `${formatCurrency(calculatePaymentAmounts().midterm)} (${contract.paymentTerms?.midtermPercentage || 50}%) to be paid after harvest`}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Delivery Date */}
+                  <div className="relative">
+                    <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                      ${contract.status === 'delivered' || contract.status === 'completed'
+                        ? 'border-green-600 bg-white'
+                        : 'border-gray-300 bg-gray-100'}`}>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800">Delivery</h4>
+                      <p className="text-sm text-gray-600">
+                        {contract.status === 'delivered' || contract.status === 'completed'
+                          ? 'Crop has been delivered'
+                          : `Expected on ${formatDate(contract.deliveryDate)}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Final Payment Phase */}
+                  {(['delivered', 'completed'].includes(contract.status) || (contract.status === 'payment_pending' && paymentStage === 'final')) && (
+                    <div className="relative">
+                      <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                        ${contract.status === 'payment_pending' && paymentStage === 'final'
+                          ? 'border-amber-500 bg-amber-100' 
+                          : paymentProgress.finalCompleted
+                            ? 'border-green-600 bg-green-100'
+                            : 'border-gray-300 bg-gray-100'}`}>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-800">
+                          {paymentProgress.finalCompleted 
+                            ? 'Final Payment Completed'
+                            : contract.status === 'payment_pending' && paymentStage === 'final'
+                              ? 'Final Payment Pending'
+                              : 'Final Payment'}
+                        </h4>
+                        <p className="text-sm text-gray-600">
+                          {paymentProgress.finalCompleted
+                            ? `Payment of ${formatCurrency(calculatePaymentAmounts().final)} (${contract.paymentTerms?.finalPercentage || 30}%) verified`
+                            : contract.status === 'payment_pending' && paymentStage === 'final'
+                              ? contract.paymentSubmitted 
+                                ? 'Payment notification sent, awaiting verification'
+                                : `Waiting for final payment of ${formatCurrency(calculatePaymentAmounts().final)} (${contract.paymentTerms?.finalPercentage || 30}%)`
+                              : `${formatCurrency(calculatePaymentAmounts().final)} (${contract.paymentTerms?.finalPercentage || 30}%) to be paid after delivery`}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Completion */}
+                  <div className="relative">
+                    <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
+                      ${contract.status === 'completed'
+                        ? 'border-green-600 bg-green-100'
+                        : 'border-gray-300 bg-gray-100'}`}>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800">Contract Completion</h4>
+                      <p className="text-sm text-gray-600">
+                        {contract.status === 'completed'
+                          ? `Completed on ${formatDate(contract.updatedAt)}`
+                          : 'Pending'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-
+            
             {/* Next Actions Card - Overview Tab */}
             {activeTab === 'overview' && (
               <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -1522,8 +1298,8 @@ const ContractDetail = () => {
                               <FaCommentDots className="mr-2" /> Open Chat
                             </button>
                           </>
-                    )}
-              </div>
+                        )}
+                      </div>
                     </>
                   )}
                   
@@ -1532,7 +1308,7 @@ const ContractDetail = () => {
                       <p className="text-gray-700">This contract is in negotiation. Use the chat to discuss terms with the {user.role === 'farmer' ? 'buyer' : 'farmer'}.</p>
                       
                       <div className="flex flex-wrap gap-3 mt-4">
-                        {canAcceptContract(contract, isFarmer) && (
+                        {canAcceptContract() && (
                           <button 
                             onClick={handleAcceptContract} 
                             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
@@ -1547,11 +1323,11 @@ const ContractDetail = () => {
                         >
                           <FaCommentDots className="mr-2" /> Open Chat
                         </button>
-            </div>
+                  </div>
                     </>
-                  )}
-          </div>
+                )}
               </div>
+            </div>
             )}
             
             {/* Next Actions Card - Role & Status-specific */}
@@ -1635,22 +1411,15 @@ const ContractDetail = () => {
                       {isBuyer && (
                         <>
                           <p className="text-gray-800 mb-2">
-                            {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE 
-                              ? "Contract terms accepted! Please complete the advance payment to activate the contract."
-                              : contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM
-                                ? "The crop has been harvested. Please complete the midterm payment as per agreement."
-                                : contract.currentPaymentStage === PAYMENT_STAGE.FINAL
-                                  ? "The crop has been delivered. Please verify delivery and complete the final payment."
-                                  : "Payment is required to proceed with the contract."}
                             {contract.paymentSubmitted 
-                              ? " Your payment notification has been sent. Waiting for farmer to verify receipt."
-                              : ""}
+                              ? "Your payment notification has been sent. Waiting for farmer to verify receipt."
+                              : "Contract terms accepted! Please complete the payment to activate the contract."}
                           </p>
                           <div className="flex flex-wrap gap-2 mt-2">
                             {!contract.paymentSubmitted && (
                               <button 
                                 onClick={() => {
-                                  if (window.confirm(`Have you completed the ${contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE} payment? Click Yes to confirm.`)) {
+                                  if (window.confirm("Have you completed the payment? Click Yes to confirm.")) {
                                     handleConfirmPayment();
                                   }
                                 }}
@@ -1666,23 +1435,16 @@ const ContractDetail = () => {
                             >
                               <FaCommentDots className="mr-1" /> Open Chat
                             </button>
-                          </div>
+              </div>
                         </>
                       )}
                       
                       {isFarmer && (
                         <>
                           <p className="text-gray-800 mb-2">
-                            {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE 
-                              ? "Waiting for buyer to complete advance payment."
-                              : contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM
-                                ? "The crop has been harvested. Waiting for buyer to complete midterm payment."
-                                : contract.currentPaymentStage === PAYMENT_STAGE.FINAL
-                                  ? "The crop has been delivered. Waiting for buyer to complete final payment."
-                                  : "Waiting for buyer to complete payment."}
                             {contract.paymentSubmitted 
-                              ? " The buyer has confirmed payment. Please verify that you've received it."
-                              : " If you have already received the payment, you can manually verify below."}
+                              ? "The buyer has confirmed payment. Please verify that you've received it."
+                              : "Waiting for buyer to complete payment. If you have already received the payment, you can manually verify below."}
                           </p>
                           <div className="flex flex-wrap gap-2 mt-2">
                             <button 
@@ -1698,7 +1460,7 @@ const ContractDetail = () => {
                             >
                               <FaCommentDots className="mr-1" /> Open Chat
                             </button>
-                          </div>
+            </div>
                         </>
                       )}
                     </div>
@@ -1721,8 +1483,8 @@ const ContractDetail = () => {
                           </button>
               </div>
                 )}
+              </div>
             </div>
-          </div>
                 )}
 
                 {contract.status === 'completed' && (
@@ -1896,7 +1658,7 @@ const ContractDetail = () => {
                   >
                     <FaDownload className="mr-2" /> Download Document
                   </a>
-            </div>
+              </div>
               </div>
             )}
           </div>
@@ -1904,7 +1666,7 @@ const ContractDetail = () => {
         
         {/* Negotiations Tab */}
         {activeTab === 'negotiations' && (
-            <div>
+              <div>
             <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-6">
               <div className="bg-gray-100 p-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-800 flex items-center">
@@ -1915,7 +1677,7 @@ const ContractDetail = () => {
                     ? `${contract.negotiationHistory.length} round${contract.negotiationHistory.length === 1 ? '' : 's'} of negotiation`
                     : 'No negotiations yet'}
               </p>
-            </div>
+              </div>
               
               {(!contract.negotiationHistory || contract.negotiationHistory.length === 0) ? (
                 <div className="p-6 text-center text-gray-500">
@@ -2196,7 +1958,7 @@ const ContractDetail = () => {
                     {isBuyer && (
                       <button
                         onClick={() => {
-                          if (window.confirm(`Have you completed the ${contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE} payment? Click Yes to confirm.`)) {
+                          if (window.confirm("Have you completed the payment? Click Yes to confirm.")) {
                             handleConfirmPayment();
                           }
                         }}
@@ -2213,7 +1975,7 @@ const ContractDetail = () => {
                           </>
                         ) : (
                           <>
-                            <FaMoneyBillWave className="mr-2" /> Proceed to Payment
+                            <FaMoneyBillWave className="mr-2" /> Proceed to {paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment
                           </>
                         )}
                       </button>
@@ -2224,7 +1986,7 @@ const ContractDetail = () => {
                         onClick={handleVerifyPayment}
                         className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
                       >
-                        <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? "Verify Payment Received" : "Payment Already Received"}
+                        <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? `Verify ${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment Received` : `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment Already Received`}
                       </button>
                     )}
                     
@@ -2242,80 +2004,282 @@ const ContractDetail = () => {
           )}
         </div>
 
-      {/* Next Actions section for status-specific transitions */}
-      {(['active', 'harvested'].includes(contract.status) || 
-        (contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.FINAL)) && (
-        <div className="bg-blue-50 rounded-lg p-5 border border-blue-100 print:hidden mb-8">
-          <h3 className="text-lg font-semibold mb-4 text-blue-800">Contract Status Updates</h3>
-          
-          <div className="space-y-4">
-            {/* For active contracts, show harvest option */}
-            {isFarmer && contract.status === 'active' && !['harvested', 'delivered', 'completed'].includes(contract.status) && (
-              <div className="flex items-start">
-                <FaTractor className="text-green-600 mt-1 mr-2 flex-shrink-0" />
-                <div>
-                  <p className="text-gray-800 mb-2">The contract is active and the crop is being grown. When ready, mark the crop as harvested.</p>
-                  <button 
-                    onClick={handleMarkAsHarvested}
-                    disabled={cancelLoading}
-                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center mt-2"
-                  >
-                    <FaTractor className="mr-2" /> Mark as Harvested
-                  </button>
-              </div>
-              </div>
-            )}
-            
-            {/* For harvested contracts, show midterm payment status */}
-            {isFarmer && 
-             contract.status === 'harvested' && 
-             contract.status !== 'payment_pending' && 
-             !['delivered', 'completed'].includes(contract.status) &&
-             !isMidtermPaymentCompleted(contract) && 
-             (contract.paymentTerms?.midtermPercentage || 50) > 0 && (
-              <div className="flex items-start">
-                <FaMoneyBillWave className="text-amber-600 mt-1 mr-2 flex-shrink-0" />
-                <div>
-                  <p className="text-gray-800 mb-2">The crop has been harvested. Waiting for the buyer to complete the midterm payment before delivery.</p>
-                </div>
-              </div>
-            )}
-            
-            {/* For harvested contracts with completed midterm payment, show out for delivery option */}
-            {isFarmer && 
-             contract.status === 'harvested' && 
-             contract.status !== 'payment_pending' && 
-             !['delivered', 'completed'].includes(contract.status) &&
-             isMidtermPaymentCompleted(contract) && (
-              <div className="flex items-start">
-                <FaShippingFast className="text-blue-600 mt-1 mr-2 flex-shrink-0" />
-                <div>
-                  <p className="text-gray-800 mb-2">Midterm payment has been received. The crop is ready to be delivered to the buyer.</p>
-                  <button 
-                    onClick={handleMarkAsDelivered}
-                    disabled={cancelLoading}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center mt-2"
-                  >
-                    <FaShippingFast className="mr-2" /> Mark as Out for Delivery
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            {/* For pending final payment (buyer), show note about confirming delivery */}
-            {isBuyer && contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.FINAL && (
-              <div className="flex items-start">
-                <FaExclamationTriangle className="text-amber-600 mt-1 mr-2 flex-shrink-0" />
-                <div>
-                  <p className="text-gray-800 mb-2">
-                    <strong>Important:</strong> The farmer has marked the crop as delivered. Please only proceed with payment after you have received and verified the delivery.
+        {/* Progress Updates Tab */}
+        {activeTab === 'progress' && (
+          <div>
+            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-6">
+              <div className="bg-gray-100 p-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                  <FaLeaf className="mr-2 text-green-600" /> Crop Progress Updates
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Track the growth and development of the contracted crop
                 </p>
               </div>
+              
+              <div className="p-4">
+                {isFarmer && ['active', 'harvested'].includes(contract.status) && (
+                  <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+                    <h4 className="font-medium text-gray-800 mb-3 flex items-center">
+                      <FaPlus className="mr-2 text-green-600" /> Add Progress Update
+                    </h4>
+                    
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      
+                      const formData = new FormData();
+                      formData.append('updateType', e.target.updateType.value);
+                      formData.append('description', e.target.description.value);
+                      
+                      // Handle image uploads
+                      if (e.target.images.files.length > 0) {
+                        for (let i = 0; i < e.target.images.files.length; i++) {
+                          formData.append('images', e.target.images.files[i]);
+                        }
+                      }
+                      
+                      // Submit progress update
+                      const submitUpdate = async () => {
+                        try {
+                          setCancelLoading(true);
+                          const result = await contractService.addProgressUpdate(contract._id, formData);
+                          
+                          // If update is harvest type and contract is active, auto-mark as harvested
+                          if (e.target.updateType.value === 'harvesting' && contract.status === 'active') {
+                            await updateContractStatus('harvested');
+                            // After harvest, set payment stage to midterm if midterm percentage > 0
+                            if ((contract.paymentTerms?.midtermPercentage || 50) > 0) {
+                              setPaymentStage('midterm');
+                            }
+                          }
+                          
+                          toast.success('Progress update added successfully');
+                          // Update local contract state with new progress update
+                          setContract(prevContract => ({
+                            ...prevContract,
+                            progressUpdates: [
+                              ...(prevContract.progressUpdates || []),
+                              {
+                                updateType: e.target.updateType.value,
+                                description: e.target.description.value,
+                                images: result.images || [],
+                                updatedAt: new Date()
+                              }
+                            ]
+                          }));
+                          
+                          // Reset form
+                          e.target.reset();
+                        } catch (error) {
+                          console.error('Error adding progress update:', error);
+                          toast.error(error.message || 'Error adding progress update');
+                        } finally {
+                          setCancelLoading(false);
+                        }
+                      };
+                      
+                      submitUpdate();
+                    }} 
+                    className="space-y-4">
+                      <div>
+                        <label htmlFor="updateType" className="block text-sm font-medium text-gray-700 mb-1">
+                          Update Type <span className="text-red-500">*</span>
+                        </label>
+                        <select 
+                          id="updateType" 
+                          name="updateType" 
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                          required
+                        >
+                          <option value="planting">Planting</option>
+                          <option value="growing">Growth Update</option>
+                          <option value="harvesting">Harvest</option>
+                          <option value="processing">Processing</option>
+                          <option value="other">Other/Issue</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                          Description <span className="text-red-500">*</span>
+                        </label>
+                        <textarea 
+                          id="description" 
+                          name="description" 
+                          rows="3" 
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                          placeholder="Describe the current progress, growth stage, or any issues..."
+                          required
+                        ></textarea>
+                      </div>
+                      
+                      <div>
+                        <label htmlFor="images" className="block text-sm font-medium text-gray-700 mb-1">
+                          Photos (Optional)
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <label className="cursor-pointer p-2 px-3 bg-white border border-gray-300 rounded-md hover:bg-gray-50 flex items-center">
+                            <FaCameraRetro className="mr-2 text-green-600" />
+                            <span>Upload Images</span>
+                            <input 
+                              type="file" 
+                              id="images" 
+                              name="images"
+                              accept="image/*" 
+                              multiple 
+                              className="hidden" 
+                            />
+                          </label>
+                          <span className="text-xs text-gray-500" id="file-names">No files selected</span>
+                        </div>
+                        <script>
+                          {`
+                            document.getElementById('images').addEventListener('change', function(e) {
+                              const fileNames = Array.from(e.target.files).map(file => file.name).join(', ');
+                              document.getElementById('file-names').textContent = fileNames || 'No files selected';
+                            });
+                          `}
+                        </script>
+                        <p className="text-xs text-gray-500 mt-1">Upload photos of the crop to show current progress. Max 5 photos.</p>
+                      </div>
+                      
+                      <div>
+                        <button 
+                          type="submit" 
+                          disabled={cancelLoading}
+                          className="w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center justify-center"
+                        >
+                          {cancelLoading ? (
+                            <span>Processing...</span>
+                          ) : (
+                            <>
+                              <FaPlus className="mr-2" /> Submit Progress Update
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+                
+                {/* Progress Timeline */}
+                <div>
+                  <h4 className="font-medium text-gray-800 mb-4">Progress Timeline</h4>
+                  
+                  {(!contract.progressUpdates || contract.progressUpdates.length === 0) ? (
+                    <div className="text-center p-8 bg-gray-50 rounded-lg border border-gray-200">
+                      <FaLeaf className="mx-auto text-gray-300 text-4xl mb-2" />
+                      <p className="text-gray-500">
+                        {isFarmer 
+                          ? 'No progress updates yet. Add your first update to track crop development.'
+                          : 'No progress updates available yet. The farmer will add updates as the crop develops.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Progress timeline */}
+                      {[...contract.progressUpdates].reverse().map((update, index) => (
+                        <div key={index} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                          <div className="bg-green-50 px-4 py-3 flex justify-between items-center border-b border-gray-200">
+                            <div className="flex items-center">
+                              <div className="w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center mr-3">
+                                {update.updateType === 'planting' ? <FaSeedling /> :
+                                 update.updateType === 'growing' ? <FaLeaf /> :
+                                 update.updateType === 'harvesting' ? <FaTractor /> :
+                                 update.updateType === 'processing' ? <FaWarehouse /> :
+                                 <FaClipboardList />}
+                              </div>
+                              <div>
+                                <h5 className="font-medium text-gray-900 capitalize">
+                                  {update.updateType === 'other' ? 'Update' : update.updateType}
+                                </h5>
+                                <span className="text-xs text-gray-500">
+                                  {new Date(update.updatedAt).toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                            {update.updateType === 'harvesting' && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                Harvest Completed
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="p-4">
+                            <p className="text-gray-700 mb-4 whitespace-pre-wrap">{update.description}</p>
+                            
+                            {update.images && update.images.length > 0 && (
+                              <div>
+                                <h6 className="text-sm font-medium text-gray-700 mb-2">Photos</h6>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                  {update.images.map((image, idx) => (
+                                    <div key={idx} className="relative group">
+                                      <img 
+                                        src={image.url} 
+                                        alt={`Progress update ${index + 1} image ${idx + 1}`} 
+                                        className="w-full h-24 object-cover rounded-md cursor-pointer"
+                                        onClick={() => window.open(image.url, '_blank')}
+                                      />
+                                      <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-md">
+                                        <FaExpand className="text-white text-xl" />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Crop Development Guide */}
+                <div className="mt-8 bg-white rounded-lg border border-gray-200 p-4">
+                  <h4 className="font-medium text-gray-800 mb-3">Crop Development Guide</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-green-50 p-3 rounded-md">
+                      <h5 className="font-medium text-green-800 mb-1 flex items-center">
+                        <FaSeedling className="mr-1" /> Early Stage
+                      </h5>
+                      <p className="text-sm text-gray-700">
+                        Plant establishment and early growth. Ensure proper irrigation and monitor for pests.
+                      </p>
+                    </div>
+                    
+                    <div className="bg-green-50 p-3 rounded-md">
+                      <h5 className="font-medium text-green-800 mb-1 flex items-center">
+                        <FaLeaf className="mr-1" /> Mid Stage
+                      </h5>
+                      <p className="text-sm text-gray-700">
+                        Vegetative growth and development. Critical period for nutrition and water management.
+                      </p>
+                    </div>
+                    
+                    <div className="bg-green-50 p-3 rounded-md">
+                      <h5 className="font-medium text-green-800 mb-1 flex items-center">
+                        <FaTractor className="mr-1" /> Late Stage
+                      </h5>
+                      <p className="text-sm text-gray-700">
+                        Maturation and harvest preparation. Focus on quality and preparing for optimal harvest time.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {cropDetails && cropDetails.growingInstructions && (
+                    <div className="mt-4 border-t border-gray-200 pt-4">
+                      <h5 className="font-medium text-gray-800 mb-2">Specific Growing Instructions</h5>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{cropDetails.growingInstructions}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
-        </div>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {/* Contract Action Footer */}
       <div className="mt-8 border-t border-gray-200 pt-4 pb-4 print:hidden">
@@ -2350,7 +2314,7 @@ const ContractDetail = () => {
             {contract.status === 'payment_pending' && isBuyer && (
               <button
                 onClick={() => {
-                  if (window.confirm(`Have you completed the ${contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE} payment? Click Yes to confirm.`)) {
+                  if (window.confirm(`Have you completed the ${paymentStage} payment of ${formatCurrency(getCurrentPaymentAmount())}? Click Yes to confirm.`)) {
                     handleConfirmPayment();
                   }
                 }}
@@ -2367,28 +2331,28 @@ const ContractDetail = () => {
                   </>
                 ) : (
                   <>
-                    <FaMoneyBillWave className="mr-2" /> Proceed to Payment
+                    <FaMoneyBillWave className="mr-2" /> Proceed to {paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment
                   </>
+                )}
+              </button>
             )}
-          </button>
-        )}
-        
+            
             {contract.status === 'payment_pending' && isFarmer && (
-            <button
+              <button
                 onClick={handleVerifyPayment}
                 className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
-            >
-                <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? "Verify Payment Received" : "Payment Already Received"}
-            </button>
+              >
+                <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? `Verify ${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment Received` : `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} Payment Already Received`}
+              </button>
             )}
             
             {contract.status === 'payment_pending' && (
-            <button
+              <button
                 onClick={handleOpenChat}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
-            >
+              >
                 <FaCommentDots className="mr-2" /> Open Chat
-            </button>
+              </button>
             )}
             
             {isFarmer && contract.status === 'requested' && (
@@ -2417,27 +2381,27 @@ const ContractDetail = () => {
                 className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center"
               >
                 <FaTractor className="mr-2" /> Mark as Harvested
-          </button>
-        )}
-        
+              </button>
+            )}
+            
             {contract.status === 'harvested' && isFarmer && (
-            <button
+              <button
                 onClick={handleMarkAsDelivered}
                 disabled={cancelLoading}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
               >
                 <FaShippingFast className="mr-2" /> Mark as Delivered
-            </button>
+              </button>
             )}
             
             {contract.status === 'delivered' && !isFarmer && (
-            <button
+              <button
                 onClick={handleMarkAsCompleted}
                 disabled={cancelLoading}
                 className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
               >
                 <FaCheck className="mr-2" /> Complete Contract
-            </button>
+              </button>
             )}
             
             {['requested', 'negotiating'].includes(contract.status) && (
@@ -2448,8 +2412,8 @@ const ContractDetail = () => {
               >
                 <FaTimes className="mr-2" /> Cancel Contract
               </button>
-        )}
-      </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
