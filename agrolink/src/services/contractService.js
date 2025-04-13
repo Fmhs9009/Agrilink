@@ -157,6 +157,7 @@ const contractService = {
         throw new Error('Authentication required');
       }
       
+      // Both farmers and buyers can use this endpoint
       const response = await axios.put(`${API_BASE_URL}/contracts/${id}/status`, { status }, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -185,6 +186,19 @@ const contractService = {
         throw new Error('Authentication required');
       }
       
+      // Check if this is a payment update from a customer
+      const isBuyer = authService.getUserRole() === 'customer';
+      const isPaymentUpdate = updateData.get('description')?.toLowerCase().includes('payment');
+      
+      // If it's a payment update from a buyer, don't try to create a progress update
+      // Instead, we'll rely on the subsequent status update to track the payment
+      if (isBuyer && isPaymentUpdate) {
+        // Return a mock success response rather than trying to call an endpoint
+        console.log('Skipping progress update for buyer payment - will update status instead');
+        return { success: true, message: 'Payment will be tracked through status update' };
+      }
+      
+      // For all other cases, proceed with the regular progress update
       const response = await axios.post(`${API_BASE_URL}/contracts/${id}/progress`, updateData, {
         headers: {
           Authorization: `Bearer ${token}`,

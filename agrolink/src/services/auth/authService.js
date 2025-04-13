@@ -509,6 +509,20 @@ class AuthService {
       };
     }
   }
+
+  /**
+   * Get the current user's role
+   * @returns {string|null} - User role or null if not logged in
+   */
+  getUserRole() {
+    try {
+      const user = this.getUser();
+      return user ? user.role : null;
+    } catch (error) {
+      console.error('Error getting user role:', error);
+      return null;
+    }
+  }
 }
 
 // Create singleton instance

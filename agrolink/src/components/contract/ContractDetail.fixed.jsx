@@ -11,7 +11,7 @@ import {
   FaCheck, FaTimes, FaClock, FaUser, FaMapMarkerAlt, FaSeedling, FaLeaf, 
   FaClipboardList, FaDownload, FaPrint, FaExclamationTriangle, FaHistory, FaArrowRight,
   FaUserTie, FaChartLine, FaCannon, FaShippingFast, FaWarehouse, FaTruckLoading, FaCommentDots, FaCommentSlash, FaPlus, FaArrowLeft,
-  FaCameraRetro, FaExpand, FaCheckCircle
+  FaCameraRetro, FaExpand, FaCheckCircle, FaCircleNotch
 } from 'react-icons/fa';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
@@ -30,23 +30,23 @@ const ContractDetail = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Utility function to format dates
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    
+    if (!dateString) return 'Not specified';
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'Invalid date';
       
-      return date.toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
       });
     } catch (error) {
-      console.error('Error formatting date:', error);
-      return 'Error';
+      console.error("Error formatting date:", error);
+      return 'Invalid date';
     }
   };
   
@@ -377,30 +377,28 @@ const ContractDetail = () => {
   };
 
   // Handle contract status updates
-  const updateContractStatus = async (newStatus, skipConfirmation = false) => {
-    if (!skipConfirmation && !confirm(`Are you sure you want to update the contract status to ${newStatus}?`)) {
+  const updateContractStatus = async (newStatus) => {
+    if (!confirm(`Are you sure you want to update the contract status to ${newStatus}?`)) {
       return;
     }
 
     try {
       setCancelLoading(true);
+      const response = await api.put(`/contracts/${id}/status`, { status: newStatus });
       
-      // Use contractService directly instead of generic api
-      await contractService.updateContractStatus(id, newStatus);
-      
-      toast.success(`Contract ${newStatus} successfully`);
-      
-      // Update local contract state
-      setContract(prevContract => ({
-        ...prevContract,
-        status: newStatus
-      }));
-      
-      return true; // Return success for chaining
+      if (response.data && response.data.success) {
+        console.log(newStatus)
+        console.log(response)
+        toast.success(`Contract ${newStatus} successfully`);
+        // Update local contract state
+        setContract(prevContract => ({
+          ...prevContract,
+          status: newStatus
+        }));
+      }
     } catch (error) {
       console.error(`Error updating contract to ${newStatus}:`, error);
       toast.error(`Failed to update contract: ${error.message}`);
-      return false; // Return failure for chaining
     } finally {
       setCancelLoading(false);
     }
@@ -413,24 +411,24 @@ const ContractDetail = () => {
     FINAL: 'final'
   };
 
-  // Only check progressUpdates to determine payment status
+  // Function to check if a specific payment is completed by looking at progressUpdates
   const isPaymentCompleted = (contract, stage) => {
     if (!contract || !contract.progressUpdates || contract.progressUpdates.length === 0) {
       return false;
     }
     
-    // Use valid updateType values that exist in the enum
     return contract.progressUpdates.some(update => 
-      update && update.updateType === 'other' && 
-      update.description && 
-      update.description.toLowerCase().includes(`${stage} payment`)
+      update.updateType === "payment" && 
+      update.description.toLowerCase().includes(stage)
     );
   };
 
+  // Replace isMidtermPaymentCompleted with the more generic function
   const isMidtermPaymentCompleted = (contract) => {
     return isPaymentCompleted(contract, PAYMENT_STAGE.MIDTERM);
   };
 
+  // Add specific helper functions for each payment type
   const isAdvancePaymentCompleted = (contract) => {
     return isPaymentCompleted(contract, PAYMENT_STAGE.ADVANCE);
   };
@@ -439,160 +437,124 @@ const ContractDetail = () => {
     return isPaymentCompleted(contract, PAYMENT_STAGE.FINAL);
   };
 
-  // Get current payment stage based on contract status and progressUpdates history
-  const getCurrentPaymentStage = (contract) => {
-    if (!contract) return null;
+  // Get payment date for a specific stage
+  const getPaymentDate = (contract, stage) => {
+    if (!contract || !contract.progressUpdates) return null;
     
-    // If contract is in payment_pending status, determine which payment is pending
-    if (contract.status === 'payment_pending') {
-      // If no advance payment recorded, it must be advance payment
-      if (!isAdvancePaymentCompleted(contract)) {
-        return PAYMENT_STAGE.ADVANCE;
-      }
-      
-      // If advance paid but not midterm, and contract was previously harvested, it's midterm
-      const hasHarvestUpdate = contract.progressUpdates && 
-        contract.progressUpdates.some(update => update.updateType === 'harvesting');
-      
-      if (hasHarvestUpdate && !isMidtermPaymentCompleted(contract)) {
-        return PAYMENT_STAGE.MIDTERM;
-      }
-      
-      // If both advance and midterm are paid, and contract was delivered, it's final payment
-      const hasDeliveryUpdate = contract.progressUpdates && 
-        contract.progressUpdates.some(update => update.updateType === 'shipping');
-      
-      if (hasDeliveryUpdate && !isFinalPaymentCompleted(contract)) {
-        return PAYMENT_STAGE.FINAL;
-      }
-    }
+    const paymentUpdate = contract.progressUpdates.find(update => 
+      update.updateType === "payment" && 
+      update.description.toLowerCase().includes(stage)
+    );
     
-    return null;
+    return paymentUpdate ? paymentUpdate.updatedAt : null;
   };
 
-  // Safe object access helper
-  const safeGet = (obj, path, defaultValue = null) => {
-    if (!obj) return defaultValue;
-    
-    const keys = path.split('.');
-    let result = obj;
-    
-    for (const key of keys) {
-      if (result === null || result === undefined) {
-        return defaultValue;
-      }
-      result = result[key];
-    }
-    
-    return result === undefined ? defaultValue : result;
-  };
-
-  // Update handleConfirmPayment to add payment entry to progressUpdates
+  // Update handleConfirmPayment function to use progressUpdates for tracking payments
   const handleConfirmPayment = async () => {
     try {
-      // Determine which payment stage we're in based on contract status and updates
-      const paymentStage = getCurrentPaymentStage(contract);
-      
-      if (!paymentStage) {
-        toast.error('Cannot determine which payment to process.');
-        return;
-      }
-      
+      // Determine which payment stage we're in based on contract.currentPaymentStage
+      let paymentStage = contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE;
       let paymentPercentage = 0;
       let nextStatus = '';
       
       // Set correct payment percentage and next status based on stage
       if (paymentStage === PAYMENT_STAGE.ADVANCE) {
-        paymentPercentage = safeGet(contract, 'paymentTerms.advancePercentage', 20);
+        paymentPercentage = contract.paymentTerms?.advancePercentage || 20;
         nextStatus = 'active';
       } else if (paymentStage === PAYMENT_STAGE.MIDTERM) {
-        paymentPercentage = safeGet(contract, 'paymentTerms.midtermPercentage', 50);
+        paymentPercentage = contract.paymentTerms?.midtermPercentage || 50;
         nextStatus = 'harvested'; // After midterm payment, status should be harvested
       } else if (paymentStage === PAYMENT_STAGE.FINAL) {
-        paymentPercentage = safeGet(contract, 'paymentTerms.finalPercentage', 30);
+        paymentPercentage = contract.paymentTerms?.finalPercentage || 30;
         nextStatus = 'completed';
       }
       
       // Calculate payment amount based on percentage
-      const totalAmount = safeGet(contract, 'totalAmount', 0);
-      const paymentAmount = (totalAmount * paymentPercentage / 100).toFixed(2);
+      const paymentAmount = (contract.totalAmount * paymentPercentage / 100).toFixed(2);
+      
+      // Create a progress update to track this payment - using standard updateType from schema
+      const formData = new FormData();
+      formData.append('updateType', 'payment'); // Use standard type from schema
+      formData.append('description', `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment of ${formatCurrency(paymentAmount)} (${paymentPercentage}%) completed.`);
       
       try {
-        if (isBuyer) {
-          // For buyers: Simply update the contract status directly
-          // This approach avoids permission issues for customers/buyers
-          await updateContractStatus(nextStatus, true);
-          
-          toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment completed successfully! Contract is now ${nextStatus}.`);
-        } else {
-          // For farmers: First create a progress update, then update status
-          // Create payment update using a valid enum type ('other') 
-          const formData = new FormData();
-          formData.append('updateType', 'other'); // Use 'other' instead of payment_stage
-          formData.append('description', `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment of ${formatCurrency(paymentAmount)} (${paymentPercentage}%) verified by farmer.`);
-          
-          // Add payment progressUpdate to the database
-          await contractService.addProgressUpdate(contract._id, formData);
-          
-          // Update contract status
-          await updateContractStatus(nextStatus, true);
-          
-          toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment verified successfully! Contract is now ${nextStatus}.`);
-        }
-        
-        // Refresh contract to get the updated data
-        fetchContractById();
+        // Add the payment update to progress updates
+        await contractService.addProgressUpdate(contract._id, formData);
       } catch (error) {
-        const errorMsg = safeGet(error, 'response.data.message') || safeGet(error, 'message') || 'Unknown error occurred';
-        toast.error(`Failed to process payment: ${errorMsg}`);
-        console.error("Payment error:", error);
+        console.error(`Error adding payment progress update: ${error.message}`);
       }
+      
+      // Update contract status
+      await updateContractStatus(nextStatus);
+      
+      // Show success message
+      toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment completed successfully! Contract is now ${nextStatus}.`);
+      
+      // Update local contract state
+      setContract(prevContract => ({
+        ...prevContract,
+        status: nextStatus,
+        progressUpdates: [...(prevContract.progressUpdates || []), {
+          updateType: 'payment',
+          description: `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment of ${formatCurrency(paymentAmount)} (${paymentPercentage}%) completed.`,
+          updatedAt: new Date()
+        }],
+        currentPaymentStage: null,
+        currentPaymentAmount: null,
+        currentPaymentPercentage: null
+      }));
     } catch (error) {
       toast.error(`Failed to process payment: ${error.message}`);
       console.error(error);
     }
   };
 
-  // Simplified handleVerifyPayment that relies on database records
+  // Keep handleVerifyPayment for farmer to manually verify payments if needed
   const handleVerifyPayment = async () => {
     if (window.confirm('Confirm that you have received the payment?')) {
       try {
-        const paymentStage = getCurrentPaymentStage(contract);
-        
-        if (!paymentStage) {
-          toast.error('Cannot determine which payment to verify.');
-          return;
-        }
-        
+        const currentStage = contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE;
         let nextStatus = 'active';
         
         // Determine next status based on payment stage
-        if (paymentStage === PAYMENT_STAGE.ADVANCE) {
+        if (currentStage === PAYMENT_STAGE.ADVANCE) {
           nextStatus = 'active';
-        } else if (paymentStage === PAYMENT_STAGE.MIDTERM) {
+        } else if (currentStage === PAYMENT_STAGE.MIDTERM) {
           nextStatus = 'harvested';
-        } else if (paymentStage === PAYMENT_STAGE.FINAL) {
+        } else if (currentStage === PAYMENT_STAGE.FINAL) {
           nextStatus = 'completed';
         }
         
+        // Use standard updateType from schema
+        const formData = new FormData();
+        formData.append('updateType', 'payment');
+        formData.append('description', `${currentStage.charAt(0).toUpperCase() + currentStage.slice(1)} payment verified by farmer.`);
+        
         try {
-          // Add verification record to progressUpdates using a valid enum type ('other')
-          const formData = new FormData();
-          formData.append('updateType', 'other'); // Use 'other' instead of payment_stage_verified
-          formData.append('description', `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment verified by farmer.`);
           await contractService.addProgressUpdate(contract._id, formData);
-          
-          // Update contract status without confirmation
-          await updateContractStatus(nextStatus, true);
-          
-          toast.success(`Payment verified! Contract ${nextStatus === 'active' ? 'is now active' : 'updated accordingly'}.`);
-          
-          // Refresh contract to get updated data from database
-          fetchContractById();
-        } catch (error) {
-          toast.error(`Failed to verify payment: ${error.response?.data?.message || error.message}`);
-          console.error("Verification error:", error);
+        } catch (progressError) {
+          console.error('Error adding payment verification update:', progressError);
         }
+        
+        // Update the contract status
+        await updateContractStatus(nextStatus);
+        
+        toast.success(`Payment verified! Contract ${nextStatus === 'active' ? 'is now active' : 'updated accordingly'}.`);
+        
+        // Update local contract state
+        setContract(prevContract => ({
+          ...prevContract,
+          status: nextStatus,
+          progressUpdates: [...(prevContract.progressUpdates || []), {
+            updateType: 'payment',
+            description: `${currentStage.charAt(0).toUpperCase() + currentStage.slice(1)} payment verified by farmer.`,
+            updatedAt: new Date()
+          }],
+          paymentSubmitted: false,
+          currentPaymentStage: null,
+          currentPaymentAmount: null,
+          currentPaymentPercentage: null
+        }));
       } catch (error) {
         toast.error(`Failed to verify payment: ${error.message}`);
         console.error(error);
@@ -600,56 +562,26 @@ const ContractDetail = () => {
     }
   };
 
-  // Update handleAcceptContract to set payment_pending status and let DB handle it
+  // Fix handleAcceptContract to set correct payment stage
   const handleAcceptContract = async () => {
     try {
-      // Update contract status to payment_pending without confirmation
-      const success = await updateContractStatus('payment_pending', true);
-      if (success) {
-        toast.success('Contract accepted. Waiting for advance payment.');
-        // Refresh contract to get the updated status
-        fetchContractById();
-      }
+      // Update contract status to payment_pending
+      await updateContractStatus('payment_pending');
+      toast.success('Contract accepted. Waiting for advance payment.');
+      
+      // Set the correct payment stage (advance) when accepting a contract
+      setContract(prevContract => ({
+        ...prevContract,
+        status: 'payment_pending',
+        currentPaymentStage: PAYMENT_STAGE.ADVANCE
+      }));
     } catch (error) {
       toast.error(`Failed to accept contract: ${error.message}`);
       console.error(error);
     }
   };
 
-  // Add back simple reject and complete functions
-  const handleRejectContract = async () => {
-    if (window.confirm('Are you sure you want to reject this contract?')) {
-      try {
-        // Reject without confirmation (already confirmed)
-        const success = await updateContractStatus('rejected', true);
-        if (success) {
-          toast.success('Contract has been rejected');
-          fetchContractById();
-        }
-      } catch (error) {
-        toast.error(`Failed to reject contract: ${error.message}`);
-        console.error(error);
-      }
-    }
-  };
-
-  const handleMarkAsCompleted = async () => {
-    if (window.confirm('Are you sure you want to mark this contract as completed?')) {
-      try {
-        // Complete without confirmation (already confirmed)
-        const success = await updateContractStatus('completed', true);
-        if (success) {
-          toast.success('Contract has been marked as completed');
-          fetchContractById();
-        }
-      } catch (error) {
-        toast.error(`Failed to complete contract: ${error.message}`);
-        console.error(error);
-      }
-    }
-  };
-
-  // Update handleMarkAsHarvested to rely on database for storage
+  // Simplify handleMarkAsHarvested to transition correctly
   const handleMarkAsHarvested = async () => {
     if (!window.confirm('Are you sure you want to mark this contract as harvested?')) {
       return;
@@ -657,30 +589,62 @@ const ContractDetail = () => {
     
     setCancelLoading(true);
     try {
-      // Add harvest progress update
-      const formData = new FormData();
-      formData.append('updateType', 'harvesting'); // Valid enum value
-      formData.append('description', 'Crop has been harvested and is ready for processing.');
-      
-      try {
-        await contractService.addProgressUpdate(contract._id, formData);
+      // Check if midterm payment is needed
+      if ((contract.paymentTerms?.midtermPercentage || 50) > 0) {
+        // First update status to payment_pending for midterm payment
+        await updateContractStatus('payment_pending');
         
-        // Check if midterm payment is needed
-        if ((contract.paymentTerms?.midtermPercentage || 50) > 0) {
-          // Update to payment_pending for midterm payment without confirmation
-          await updateContractStatus('payment_pending', true);
-          toast.info('Crop has been harvested. Waiting for midterm payment from buyer');
-        } else {
-          // If no midterm payment needed, just update to harvested without confirmation
-          await updateContractStatus('harvested', true);
-          toast.success('Contract marked as harvested');
+        // Add harvest progress update - using standard updateType from schema
+        const formData = new FormData();
+        formData.append('updateType', 'harvesting'); // This is a valid enum value in the schema
+        formData.append('description', 'Crop has been harvested and is ready for processing. Waiting for midterm payment.');
+        
+        try {
+          await contractService.addProgressUpdate(contract._id, formData);
+        } catch (progressError) {
+          console.error('Error adding harvest progress update:', progressError);
         }
         
-        // Refresh contract to get updated data
-        fetchContractById();
-      } catch (error) {
-        toast.error(`Failed to mark as harvested: ${error.response?.data?.message || error.message}`);
-        console.error("Harvest update error:", error);
+        toast.info('Crop has been harvested. Waiting for midterm payment from buyer');
+        
+        // Update contract locally with correct payment stage and status
+        setContract(prevContract => ({
+          ...prevContract,
+          status: 'payment_pending',
+          currentPaymentStage: PAYMENT_STAGE.MIDTERM,
+          progressUpdates: [...(prevContract.progressUpdates || []), {
+            updateType: 'harvesting',
+            description: 'Crop has been harvested and is ready for processing. Waiting for midterm payment.',
+            updatedAt: new Date()
+          }]
+        }));
+      } else {
+        // If no midterm payment needed, just update to harvested
+        await updateContractStatus('harvested');
+        
+        // Add harvest progress update - using standard updateType from schema  
+        const formData = new FormData();
+        formData.append('updateType', 'harvesting'); // This is a valid enum value in the schema  
+        formData.append('description', 'Crop has been harvested and is ready for processing.');
+        
+        try {
+          await contractService.addProgressUpdate(contract._id, formData);
+        } catch (progressError) {
+          console.error('Error adding harvest progress update:', progressError);
+        }
+        
+        toast.success('Contract marked as harvested');
+        
+        // Update contract with new status and progress update
+        setContract(prevContract => ({
+          ...prevContract,
+          status: 'harvested',
+          progressUpdates: [...(prevContract.progressUpdates || []), {
+            updateType: 'harvesting',
+            description: 'Crop has been harvested and is ready for processing.',
+            updatedAt: new Date()
+          }]
+        }));
       }
     } catch (error) {
       console.error('Error during harvest marking:', error);
@@ -690,7 +654,7 @@ const ContractDetail = () => {
     }
   };
 
-  // Update handleMarkAsDelivered to rely on database storage
+  // Simplify handleMarkAsDelivered for correct transitions
   const handleMarkAsDelivered = async () => {
     if (!window.confirm('Are you sure you want to mark this contract as delivered?')) {
       return;
@@ -698,30 +662,51 @@ const ContractDetail = () => {
     
     setCancelLoading(true);
     try {
-      // Add delivery progress update
+      // Update contract status to delivered
+      await updateContractStatus('delivered');
+      
+      // Add delivery progress update - using standard updateType from schema
       const formData = new FormData();
-      formData.append('updateType', 'shipping'); // Valid enum value
+      formData.append('updateType', 'shipping'); // This is a valid enum value in the schema
       formData.append('description', 'Crop has been delivered to the buyer.');
       
       try {
         await contractService.addProgressUpdate(contract._id, formData);
-        
-        // Check if final payment is needed
-        if ((contract.paymentTerms?.finalPercentage || 30) > 0) {
-          // Update to payment_pending for final payment without confirmation
-          await updateContractStatus('payment_pending', true);
-          toast.info('Crop has been delivered. Waiting for final payment from buyer.');
-        } else {
-          // If no final payment, mark as delivered without confirmation
-          await updateContractStatus('delivered', true);
-          toast.success('Contract marked as delivered');
-        }
-        
-        // Refresh contract to get updated data
-        fetchContractById();
-      } catch (error) {
-        toast.error(`Failed to mark as delivered: ${error.response?.data?.message || error.message}`);
-        console.error("Delivery update error:", error);
+      } catch (progressError) {
+        console.error('Error adding delivery progress update:', progressError);
+      }
+      
+      toast.success('Contract marked as delivered');
+      
+      // Update contract with new status and progress update
+      setContract(prevContract => ({
+        ...prevContract,
+        status: 'delivered',
+        progressUpdates: [...(prevContract.progressUpdates || []), {
+          updateType: 'shipping',
+          description: 'Crop has been delivered to the buyer.',
+          updatedAt: new Date()
+        }]
+      }));
+      
+      // Check if final payment is needed
+      if ((contract.paymentTerms?.finalPercentage || 30) > 0) {
+        // Simple delay to ensure the status update completes
+        setTimeout(async () => {
+          try {
+            await updateContractStatus('payment_pending');
+            toast.info('Waiting for final payment from buyer. Note: Payment should be made once delivery is received.');
+            
+            // Update contract locally with correct payment stage
+            setContract(prevContract => ({
+              ...prevContract,
+              status: 'payment_pending',
+              currentPaymentStage: PAYMENT_STAGE.FINAL
+            }));
+          } catch (paymentError) {
+            console.error('Error transitioning to payment_pending:', paymentError);
+          }
+        }, 1000);
       }
     } catch (error) {
       console.error('Error during delivery marking:', error);
@@ -802,53 +787,76 @@ const ContractDetail = () => {
     return isFarmer;
   };
 
-  // Get date of a specific update type
-  const getUpdateDate = (contract, updateType, includeText = '') => {
-    if (!contract || !contract.progressUpdates || !contract.progressUpdates.length) {
-      return null;
+  // Add back simple reject and complete functions
+  const handleRejectContract = async () => {
+    if (window.confirm('Are you sure you want to reject this contract?')) {
+      try {
+        await updateContractStatus('rejected');
+        toast.success('Contract has been rejected');
+      } catch (error) {
+        toast.error(`Failed to reject contract: ${error.message}`);
+        console.error(error);
+      }
     }
-    
-    const update = contract.progressUpdates.find(u => 
-      u && u.updateType === updateType && 
-      (!includeText || (u.description && u.description.includes(includeText)))
-    );
-    
-    return update ? update.updatedAt : null;
   };
-  
-  // Get payment date helper
-  const getPaymentDate = (contract, stage) => {
-    if (!contract || !contract.progressUpdates || !contract.progressUpdates.length) {
-      return null;
+
+  const handleMarkAsCompleted = async () => {
+    if (window.confirm('Are you sure you want to mark this contract as completed?')) {
+      try {
+        await updateContractStatus('completed');
+        toast.success('Contract has been marked as completed');
+      } catch (error) {
+        toast.error(`Failed to complete contract: ${error.message}`);
+        console.error(error);
+      }
+    }
+  };
+
+  const handleAddProgressUpdate = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const updateType = formData.get('updateType');
+    const description = formData.get('description');
+    const images = formData.getAll('images');
+    
+    if (!updateType || !description) {
+      toast.error('Please provide an update type and description');
+      return;
     }
     
-    const update = contract.progressUpdates.find(u => 
-      u && u.updateType === 'other' && 
-      u.description && 
-      u.description.toLowerCase().includes(`${stage} payment`)
-    );
+    setIsSubmitting(true);
     
-    return update ? update.updatedAt : null;
+    try {
+      // Upload images if any
+      if (images && images.length > 0) {
+        for (let i = 0; i < images.length; i++) {
+          if (images[i].size > 0) {
+            formData.append(`images[]`, images[i]);
+          }
+        }
+      }
+      
+      // Make API call to add progress update
+      await contractService.addProgressUpdate(contract._id, formData);
+      
+      // Reset form
+      e.target.reset();
+      
+      // Show success message
+      toast.success('Progress update added successfully!');
+      
+      // Refetch contract to get updated data
+      fetchContractById();
+    } catch (error) {
+      toast.error(`Failed to add progress update: ${error.message}`);
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (loading || isLoading) {
     return <LoadingSpinner message="Loading contract details..." />;
-  }
-
-  if (!contract) {
-    return (
-      <div className="text-center p-8 bg-white rounded-lg shadow-md" role="alert">
-        <FaExclamationTriangle className="text-yellow-500 text-5xl mx-auto mb-4" aria-hidden="true" />
-        <h2 className="text-xl font-semibold text-gray-800 mb-2">Contract Not Found</h2>
-        <p className="text-gray-600 mb-4">The contract you're looking for does not exist or has been removed.</p>
-        <Link 
-          to="/contracts" 
-          className="inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          View All Contracts
-        </Link>
-      </div>
-    );
   }
 
   if (error) {
@@ -881,12 +889,42 @@ const ContractDetail = () => {
     );
   }
   
+  if (!contract) {
+    return (
+      <div className="text-center p-8 bg-white rounded-lg shadow-md" role="alert">
+        <FaExclamationTriangle className="text-yellow-500 text-5xl mx-auto mb-4" aria-hidden="true" />
+        <h2 className="text-xl font-semibold text-gray-800 mb-2">Contract Not Found</h2>
+        <p className="text-gray-600 mb-4">The contract you're looking for doesn't exist or you don't have permission to view it.</p>
+        <div className="flex flex-wrap justify-center gap-3">
+          <button 
+            onClick={handleRetryAll}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          >
+            Retry All
+          </button>
+          <button 
+            onClick={fetchContractById}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Try Again
+          </button>
+          <Link 
+            to="/contracts" 
+            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+          >
+            Back to Contract Requests
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const statusColors = getStatusColors(contract.status);
   const cropName = cropDetails?.name || contract.crop?.name || 'Agricultural Product';
   const otherParty = isFarmer ? contract.buyer : contract.farmer;
   const otherPartyName = otherParty?.Name || 'Contract Party';
-  
-    return (
+
+  return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden max-w-6xl mx-auto">
       {/* Contract Header */}
       <div className="bg-gradient-to-r from-green-600 to-green-800 text-white p-6">
@@ -902,21 +940,21 @@ const ContractDetail = () => {
             </span>
             
             <div className="flex gap-2 print:hidden">
-          <button 
+          <button
                 onClick={handleOpenChat}
                 className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center text-sm"
           >
                 <FaCommentDots className="mr-1" /> Chat
           </button>
               
-          <button 
+          <button
                 onClick={() => window.print()}
                 className="px-3 py-1 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 flex items-center text-sm"
           >
                 <FaPrint className="mr-1" /> Print
           </button>
+            </div>
         </div>
-      </div>
       </div>
 
         {/* Contract Timeline */}
@@ -943,7 +981,7 @@ const ContractDetail = () => {
       {/* Navigation Tabs */}
       <div className="border-b border-gray-200 print:hidden">
         <nav className="flex overflow-x-auto">
-          <button
+          <button 
             className={`px-4 py-3 text-sm font-medium ${activeTab === 'overview' 
               ? 'border-b-2 border-green-600 text-green-600' 
               : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
@@ -954,14 +992,14 @@ const ContractDetail = () => {
           
           {/* Only show Detailed Contract Terms tab when contract is accepted or later */}
           {['payment_pending', 'accepted', 'active', 'harvested', 'delivered', 'completed'].includes(contract.status) && (
-          <button
+            <button 
               className={`px-4 py-3 text-sm font-medium ${activeTab === 'terms' 
                 ? 'border-b-2 border-green-600 text-green-600' 
                 : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
               onClick={() => setActiveTab('terms')}
             >
               Detailed Contract Terms
-          </button>
+            </button>
           )}
           
           <button 
@@ -972,8 +1010,17 @@ const ContractDetail = () => {
           >
             Negotiation History
           </button>
+          
+          <button 
+            className={`px-4 py-3 text-sm font-medium ${activeTab === 'progress' 
+              ? 'border-b-2 border-green-600 text-green-600' 
+              : 'text-gray-600 hover:text-gray-800 hover:border-b-2 hover:border-gray-300'}`}
+            onClick={() => setActiveTab('progress')}
+          >
+            Progress Updates
+          </button>
         </nav>
-        </div>
+      </div>
 
       {/* Tab Content */}
       <div className="p-6">
@@ -991,11 +1038,11 @@ const ContractDetail = () => {
                 <span className="text-sm font-medium px-2.5 py-0.5 rounded-full bg-white shadow-sm">
                   ID: {contract._id.substr(-6)}
                 </span>
-      </div>
-
+              </div>
+              
               <div className="p-5">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div>
+                  <div>
                     <h4 className="text-sm font-medium text-gray-500">Created</h4>
                     <p className="text-gray-800">{formatDate(contract.createdAt)}</p>
                     <p className="text-xs text-gray-500 mt-1">
@@ -1020,119 +1067,132 @@ const ContractDetail = () => {
                       </p>
                     )}
                   </div>
-          </div>
+                </div>
         </div>
       </div>
 
             {/* Payment Required Card - Only shown to buyer when contract is in payment_pending state */}
-            {isBuyer && contract?.status === 'payment_pending' && (
-              <div className="bg-amber-50 rounded-lg p-5 border border-amber-100 mb-8">
-                <h3 className="text-lg font-semibold mb-4 text-amber-800">
-                  {getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE ? 'Advance Payment Required' :
-                   getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM ? 'Midterm Payment Required' :
-                   'Final Payment Required'}
-          </h3>
-                <p className="text-gray-700 mb-4">
-                  {getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE
-                    ? 'Please complete the advance payment to activate the contract.'
-                    : getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM
-                      ? 'The crop has been harvested. Please complete the midterm payment to proceed to delivery.'
-                      : 'The crop has been delivered. Please complete the final payment to complete the contract.'}
+            {isBuyer && contract.status === 'payment_pending' && (
+              <div className="bg-white rounded-lg border border-yellow-300 p-4 mb-6">
+                <h3 className="text-lg font-medium text-gray-800 mb-2 flex items-center">
+                  <FaMoneyBillWave className="mr-2 text-yellow-600" /> 
+                  {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? 'Advance Payment Required' :
+                   contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? 'Midterm Payment Required' :
+                   contract.currentPaymentStage === PAYMENT_STAGE.FINAL ? 'Final Payment Required' : 'Payment Required'}
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE 
+                    ? 'Please complete the advance payment to activate this contract.' 
+                    : contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM
+                      ? 'The crop has been harvested. Please complete the midterm payment as per agreement.'
+                      : 'The crop has been delivered. Please complete the final payment to complete the contract. Please verify that you have received the delivery before making payment.'}
                 </p>
-                
-                <div className="bg-white p-4 rounded border border-amber-100 mb-4">
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <h4 className="font-medium text-gray-700 mb-2">Payment Details:</h4>
                   <div className="flex justify-between mb-2">
-                    <span className="text-gray-700">Payment Stage:</span>
-                    <span className="font-medium text-amber-700">
-                      {getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE ? 'Advance Payment' :
-                       getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM ? 'Midterm Payment' :
-                       'Final Payment'}
+                    <span className="text-gray-600">Payment Stage:</span>
+                    <span className="font-medium">
+                      {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? 'Advance Payment' :
+                       contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? 'Midterm Payment' :
+                       contract.currentPaymentStage === PAYMENT_STAGE.FINAL ? 'Final Payment' : 'Payment'}
                     </span>
                   </div>
-                  
                   <div className="flex justify-between mb-2">
-                    <span className="text-gray-700">Percentage:</span>
+                    <span className="text-gray-600">Percentage:</span>
                     <span className="font-medium">
-                      {getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE ? safeGet(contract, 'paymentTerms.advancePercentage', 20) :
-                       getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM ? safeGet(contract, 'paymentTerms.midtermPercentage', 50) :
-                       safeGet(contract, 'paymentTerms.finalPercentage', 30)}%
+                      {contract.currentPaymentPercentage || 
+                       (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
+                        contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
+                        contract.paymentTerms?.finalPercentage || 30)}%
                     </span>
                   </div>
-                  
                   <div className="flex justify-between mb-2">
-                    <span className="text-gray-700">Amount Due:</span>
+                    <span className="text-gray-600">Amount:</span>
                     <span className="font-medium">
-                      {formatCurrency(
-                        (safeGet(contract, 'totalAmount', 0) * (
-                          getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE ? safeGet(contract, 'paymentTerms.advancePercentage', 20) :
-                          getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM ? safeGet(contract, 'paymentTerms.midtermPercentage', 50) :
-                          safeGet(contract, 'paymentTerms.finalPercentage', 30)
-                        ) / 100).toFixed(2)
+                      {formatCurrency(contract.currentPaymentAmount || 
+                        ((contract.totalAmount * (contract.currentPaymentPercentage || 
+                          (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
+                           contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
+                           contract.paymentTerms?.finalPercentage || 30)) / 100).toFixed(2))
                       )}
                     </span>
                   </div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-gray-600">Total Contract Value:</span>
+                    <span className="font-medium">{formatCurrency(contract.totalAmount)}</span>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Confirm payment of ${formatCurrency(contract.currentPaymentAmount || 
+                        ((contract.totalAmount * (contract.currentPaymentPercentage || 
+                          (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
+                           contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
+                           contract.paymentTerms?.finalPercentage || 30)) / 100).toFixed(2))
+                      )} for ${contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE} payment? This will automatically progress the contract.`)) {
+                        handleConfirmPayment();
+                      }
+                    }}
+                    className="mt-4 py-2 px-4 rounded-md flex items-center justify-center w-full bg-green-600 text-white hover:bg-green-700"
+                  >
+                    <FaMoneyBillWave className="mr-2" /> Complete Payment
+                  </button>
                 </div>
-                
-                <button 
-                  onClick={handleConfirmPayment}
-                  className="w-full py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
-                >
-                  <FaMoneyBillWave className="mr-2" /> Complete Payment
-                </button>
               </div>
             )}
             
             {/* Payment Confirmation - Only shown to farmer when contract is in payment_pending state */}
             {isFarmer && contract.status === 'payment_pending' && (
-              <div className="bg-amber-50 rounded-lg p-5 border border-amber-100 mb-8">
-                <h3 className="text-lg font-semibold mb-4 text-amber-800">
-                  {getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE ? 'Awaiting Advance Payment' :
-                   getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM ? 'Awaiting Midterm Payment' :
-                   'Awaiting Final Payment'}
+              <div className="bg-white rounded-lg border border-yellow-300 p-4 mb-6">
+                <h3 className="text-lg font-medium text-gray-800 mb-2 flex items-center">
+                  <FaMoneyBillWave className="mr-2 text-yellow-600" /> 
+                  {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? 'Awaiting Advance Payment' :
+                   contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? 'Awaiting Midterm Payment' :
+                   contract.currentPaymentStage === PAYMENT_STAGE.FINAL ? 'Awaiting Final Payment' : 'Awaiting Payment'}
                 </h3>
-                <p className="text-gray-700 mb-4">
-                  Waiting for the buyer to complete the payment. You will be notified once payment is made.
+                <p className="text-gray-600 mb-4">
+                  {contract.paymentSubmitted 
+                    ? `The buyer has confirmed making the ${contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE} payment. Please verify once you've received it.`
+                    : `Waiting for buyer to complete ${contract.currentPaymentStage || PAYMENT_STAGE.ADVANCE} payment. If you have already received the payment, you can manually verify below.`}
                 </p>
-                
-                <div className="bg-white p-4 rounded border border-amber-100 mb-4">
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <h4 className="font-medium text-gray-700 mb-2">Payment Details:</h4>
                   <div className="flex justify-between mb-2">
-                    <span className="text-gray-700">Payment Stage:</span>
-                    <span className="font-medium text-amber-700">
-                      {getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE ? 'Advance Payment' :
-                       getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM ? 'Midterm Payment' :
-                       'Final Payment'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between mb-2">
-                    <span className="text-gray-700">Percentage:</span>
+                    <span className="text-gray-600">Payment Stage:</span>
                     <span className="font-medium">
-                      {getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE ? safeGet(contract, 'paymentTerms.advancePercentage', 20) :
-                       getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM ? safeGet(contract, 'paymentTerms.midtermPercentage', 50) :
-                       safeGet(contract, 'paymentTerms.finalPercentage', 30)}%
+                      {contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? 'Advance Payment' :
+                       contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? 'Midterm Payment' :
+                       contract.currentPaymentStage === PAYMENT_STAGE.FINAL ? 'Final Payment' : 'Payment'}
                     </span>
-                  </div>
-                  
+          </div>
                   <div className="flex justify-between mb-2">
-                    <span className="text-gray-700">Amount Due:</span>
+                    <span className="text-gray-600">Percentage:</span>
                     <span className="font-medium">
-                      {formatCurrency(
-                        (safeGet(contract, 'totalAmount', 0) * (
-                          getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE ? safeGet(contract, 'paymentTerms.advancePercentage', 20) :
-                          getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM ? safeGet(contract, 'paymentTerms.midtermPercentage', 50) :
-                          safeGet(contract, 'paymentTerms.finalPercentage', 30)
-                        ) / 100).toFixed(2)
+                      {contract.currentPaymentPercentage || 
+                       (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
+                        contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
+                        contract.paymentTerms?.finalPercentage || 30)}%
+                    </span>
+        </div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-gray-600">Amount:</span>
+                    <span className="font-medium">
+                      {formatCurrency(contract.currentPaymentAmount || 
+                        ((contract.totalAmount * (contract.currentPaymentPercentage || 
+                          (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
+                           contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
+                           contract.paymentTerms?.finalPercentage || 30)) / 100).toFixed(2))
                       )}
                     </span>
-                  </div>
+      </div>
+
+                  <button
+                    onClick={handleVerifyPayment}
+                    className="mt-2 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 flex items-center justify-center w-full"
+                  >
+                    <FaCheckCircle className="mr-2" /> {contract.paymentSubmitted ? "Verify Payment Received" : "Payment Already Received"}
+                  </button>
                 </div>
-                
-                <button 
-                  onClick={handleVerifyPayment}
-                  className="w-full py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
-                >
-                  <FaCheckCircle className="mr-2" /> Verify Payment Received
-                </button>
               </div>
             )}
             
@@ -1306,13 +1366,13 @@ const ContractDetail = () => {
                       {/* Advance Payment */}
                       <div className="relative">
                         <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                          ${contract.status === 'payment_pending' && getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE
+                          ${contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE
                             ? 'border-amber-500 bg-amber-100' 
                             : isAdvancePaymentCompleted(contract)
                               ? 'border-green-600 bg-white'
                               : 'border-gray-300 bg-gray-100'}`}>
                         </div>
-                <div>
+              <div>
                           <h4 className="font-medium text-gray-800 flex items-center">
                             <FaMoneyBillWave className="mr-1 text-green-600" />
                             Advance Payment ({contract.paymentTerms?.advancePercentage || 20}%)
@@ -1320,14 +1380,16 @@ const ContractDetail = () => {
                           <p className="text-sm text-gray-600">
                             {isAdvancePaymentCompleted(contract)
                               ? `Completed on ${formatDate(getPaymentDate(contract, PAYMENT_STAGE.ADVANCE))}`
-                              : contract.status === 'payment_pending' && getCurrentPaymentStage(contract) === PAYMENT_STAGE.ADVANCE
-                                ? 'Waiting for buyer to complete advance payment'
+                              : contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE
+                                ? contract.paymentSubmitted
+                                  ? 'Payment notification sent, awaiting verification'
+                                  : 'Waiting for buyer to complete advance payment'
                                 : ['active', 'harvested', 'readyForHarvest', 'delivered', 'completed'].includes(contract.status)
                                   ? 'Completed'
                                   : 'Due after contract acceptance'}
-                  </p>
-                </div>
+                </p>
               </div>
+            </div>
 
                       {/* Inside the Growing Phase section in the Timeline */}
                       <div className="relative">
@@ -1389,7 +1451,7 @@ const ContractDetail = () => {
                               ? 'border-green-600 bg-white'
                               : 'border-gray-300 bg-gray-100'}`}>
                         </div>
-              <div>
+                        <div>
                           <h4 className="font-medium text-gray-800 flex items-center justify-between">
                             <span className="flex items-center">
                               <FaTractor className="mr-1 text-green-600" />
@@ -1400,8 +1462,8 @@ const ContractDetail = () => {
                             {contract.status === 'readyForHarvest'
                               ? 'Ready for harvest'
                               : ['harvested', 'delivered', 'completed'].includes(contract.status)
-                                ? 'Harvested on ' + formatDate(getUpdateDate(contract, 'harvesting') || contract.updatedAt)
-                                : contract.status === 'payment_pending' && getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM
+                                ? 'Harvested on ' + formatDate(contract.progressUpdates.find(p => p.updateType === 'harvesting')?.updatedAt || contract.updatedAt)
+                                : contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM
                                   ? 'Harvested. Awaiting midterm payment'
                                   : `Expected: ${formatDate(contract.expectedHarvestDate)}`}
                             
@@ -1424,7 +1486,7 @@ const ContractDetail = () => {
                       {(contract.paymentTerms?.midtermPercentage || 50) > 0 && (
                         <div className="relative">
                           <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                            ${contract.status === 'payment_pending' && getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM
+                            ${contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM
                               ? 'border-amber-500 bg-amber-100' 
                               : isPaymentCompleted(contract, PAYMENT_STAGE.MIDTERM)
                                 ? 'border-green-600 bg-white'
@@ -1440,8 +1502,10 @@ const ContractDetail = () => {
                             <p className="text-sm text-gray-600">
                               {isPaymentCompleted(contract, PAYMENT_STAGE.MIDTERM)
                                 ? `Completed on ${formatDate(getPaymentDate(contract, PAYMENT_STAGE.MIDTERM))}`
-                                : contract.status === 'payment_pending' && getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM
-                                  ? 'Due after harvest - Waiting for buyer to complete payment'
+                                : contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM
+                                  ? contract.paymentSubmitted 
+                                    ? 'Payment notification sent, awaiting verification'
+                                    : 'Due after harvest - Waiting for buyer to complete payment'
                                   : ['harvested', 'delivered', 'completed'].includes(contract.status) && !isPaymentCompleted(contract, PAYMENT_STAGE.MIDTERM)
                                     ? 'Pending payment'
                                     : 'Due after harvest'}
@@ -1458,7 +1522,7 @@ const ContractDetail = () => {
                             : ['delivered', 'completed'].includes(contract.status)
                               ? 'border-green-600 bg-white'
                               : 'border-gray-300 bg-gray-100'}`}>
-                  </div>
+                        </div>
               <div>
                           <h4 className="font-medium text-gray-800 flex items-center justify-between">
                             <span className="flex items-center">
@@ -1483,23 +1547,23 @@ const ContractDetail = () => {
                             {contract.status === 'readyForDelivery'
                               ? 'Ready for delivery'
                               : ['delivered', 'completed'].includes(contract.status)
-                                ? 'Delivered on ' + formatDate(getUpdateDate(contract, 'shipping') || contract.updatedAt)
+                                ? 'Delivered on ' + formatDate(contract.progressUpdates.find(p => p.updateType === 'shipping')?.updatedAt || contract.updatedAt)
                                 : 'Planned after harvest'}
                           </p>
-              </div>
-            </div>
+                        </div>
+                      </div>
 
                       {/* Final Payment - Only if finalPercentage > 0 */}
                       {(contract.paymentTerms?.finalPercentage || 30) > 0 && (
                         <div className="relative">
                           <div className={`absolute -left-8 mt-1.5 w-5 h-5 rounded-full border-2 
-                            ${contract.status === 'payment_pending' && getCurrentPaymentStage(contract) === PAYMENT_STAGE.FINAL
+                            ${contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.FINAL
                               ? 'border-amber-500 bg-amber-100' 
                               : isPaymentCompleted(contract, PAYMENT_STAGE.FINAL)
                                 ? 'border-green-600 bg-white'
                                 : 'border-gray-300 bg-gray-100'}`}>
                           </div>
-              <div>
+                          <div>
                             <h4 className="font-medium text-gray-800 flex items-center">
                               <FaMoneyBillWave className="mr-1 text-green-600" />
                               Final Payment ({contract.paymentTerms?.finalPercentage || 30}%)
@@ -1507,14 +1571,16 @@ const ContractDetail = () => {
                             <p className="text-sm text-gray-600">
                               {isPaymentCompleted(contract, PAYMENT_STAGE.FINAL)
                                 ? `Completed on ${formatDate(getPaymentDate(contract, PAYMENT_STAGE.FINAL))}`
-                                : contract.status === 'payment_pending' && getCurrentPaymentStage(contract) === PAYMENT_STAGE.FINAL
-                                  ? 'Waiting for buyer to complete final payment'
+                                : contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.FINAL
+                                  ? contract.paymentSubmitted 
+                                    ? 'Payment notification sent, awaiting verification'
+                                    : 'Waiting for buyer to complete final payment'
                                   : contract.status === 'completed'
                                     ? 'Completed'
                                     : 'Due after delivery'}
                             </p>
-              </div>
-            </div>
+                          </div>
+                        </div>
                       )}
 
                       {/* Contract Completion */}
@@ -1523,7 +1589,7 @@ const ContractDetail = () => {
                           ${contract.status === 'completed'
                             ? 'border-green-600 bg-white' 
                             : 'border-gray-300 bg-gray-100'}`}>
-          </div>
+                        </div>
                         <div>
                           <h4 className="font-medium text-gray-800 flex items-center">
                             <FaCheckCircle className="mr-1 text-green-600" />
@@ -1757,10 +1823,10 @@ const ContractDetail = () => {
                             >
                               <FaCommentDots className="mr-1" /> Open Chat
                             </button>
-              </div>
+            </div>
                         </>
                       )}
-            </div>
+                    </div>
                   </div>
                 )}
 
@@ -2326,80 +2392,45 @@ const ContractDetail = () => {
                     >
                       <FaTractor className="mr-2" /> Mark as Harvested
                     </button>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-
+            )}
+            
             {/* For payment_pending with midterm stage */}
-            {contract.status === 'payment_pending' && 
-             [PAYMENT_STAGE.MIDTERM, PAYMENT_STAGE.FINAL].includes(getCurrentPaymentStage(contract)) && (
-            <div className="bg-blue-50 rounded-lg p-5 border border-blue-100 print:hidden mb-8">
-              <h3 className="text-lg font-semibold mb-4 text-blue-800">Current Stage Updates</h3>
-              
-              <div className="space-y-4">
-                {getCurrentPaymentStage(contract) === PAYMENT_STAGE.MIDTERM && (
-                  <div className="flex items-start">
-                    <FaMoneyBillWave className="text-amber-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
-                      <p className="text-gray-800 mb-2">
-                        <span className="font-medium">Midterm Payment Required:</span> 
-                        {isBuyer 
-                          ? ' The crop has been harvested. Please complete the midterm payment to proceed to delivery.' 
-                          : ' The crop has been harvested. Waiting for the buyer to complete the midterm payment.'}
-                      </p>
-                      {isBuyer && (
-                        <button 
-                          onClick={() => {
-                            if (window.confirm(`Complete midterm payment of ${formatCurrency((contract.totalAmount * (contract.paymentTerms?.midtermPercentage || 50) / 100).toFixed(2))}?`)) {
-                              handleConfirmPayment();
-                            }
-                          }}
-                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center mt-2"
-                        >
-                          <FaMoneyBillWave className="mr-2" /> Complete Midterm Payment
-                        </button>
-                )}
+            {contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM && (
+              <div className="flex items-start">
+                <FaMoneyBillWave className="text-amber-600 mt-1 mr-2 flex-shrink-0" />
+                <div>
+                  <p className="text-gray-800 mb-2">
+                    <span className="font-medium">Midterm Payment Required:</span> 
+                    {isBuyer 
+                      ? ' The crop has been harvested. Please complete the midterm payment to proceed to delivery.' 
+                      : ' The crop has been harvested. Waiting for the buyer to complete the midterm payment.'}
+                  </p>
+                  {isBuyer && (
+                    <button 
+                      onClick={() => {
+                        if (window.confirm(`Complete midterm payment of ${formatCurrency((contract.totalAmount * (contract.paymentTerms?.midtermPercentage || 50) / 100).toFixed(2))}?`)) {
+                          handleConfirmPayment();
+                        }
+                      }}
+                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center mt-2"
+                    >
+                      <FaMoneyBillWave className="mr-2" /> Complete Midterm Payment
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-
-                {getCurrentPaymentStage(contract) === PAYMENT_STAGE.FINAL && (
-                  <div className="flex items-start">
-                    <FaExclamationTriangle className="text-amber-600 mt-1 mr-2 flex-shrink-0" />
-                    <div>
-                      <p className="text-gray-800 mb-2">
-                        <span className="font-medium">Delivery Complete:</span> 
-                        {isBuyer 
-                          ? ' The farmer has marked the crop as delivered. Please verify you have received the delivery before completing the final payment.'
-                          : ' The crop has been delivered. Waiting for the buyer to complete the final payment.'}
-                      </p>
-                      {isBuyer && (
-                        <button 
-                          onClick={() => {
-                            if (window.confirm(`Complete final payment of ${formatCurrency((contract.totalAmount * (contract.paymentTerms?.finalPercentage || 30) / 100).toFixed(2))}?`)) {
-                              handleConfirmPayment();
-                            }
-                          }}
-                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center mt-2"
-                        >
-                          <FaMoneyBillWave className="mr-2" /> Complete Final Payment
-                        </button>
-                      )}
-              </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
+            )}
+            
             {/* For harvested contracts with completed midterm payment */}
             {contract.status === 'harvested' && !['payment_pending'].includes(contract.status) && (
               <div className="flex items-start">
                 {!isPaymentCompleted(contract, PAYMENT_STAGE.MIDTERM) ? (
                   <>
                     <FaMoneyBillWave className="text-amber-600 mt-1 mr-2 flex-shrink-0" />
-              <div>
+                    <div>
                       <p className="text-gray-800 mb-2">
                         <span className="font-medium">Harvest Complete:</span> 
                         {isBuyer 
@@ -2410,10 +2441,18 @@ const ContractDetail = () => {
                         <button 
                           onClick={() => {
                             if (window.confirm(`Complete midterm payment of ${formatCurrency((contract.totalAmount * (contract.paymentTerms?.midtermPercentage || 50) / 100).toFixed(2))}?`)) {
-                              // Mark payment_pending and refresh
+                              // First set the correct payment stage
+                              setContract(prevContract => ({
+                                ...prevContract,
+                                currentPaymentStage: PAYMENT_STAGE.MIDTERM
+                              }));
+                              // Then update status to payment_pending
                               updateContractStatus('payment_pending').then(() => {
-                                fetchContractById();
-                                // Give time for the page to refresh before payment
+                                setContract(prevContract => ({
+                                  ...prevContract,
+                                  status: 'payment_pending'
+                                }));
+                                // Finally handle payment after a short delay to ensure state updates
                                 setTimeout(() => {
                                   handleConfirmPayment();
                                 }, 500);
@@ -2445,18 +2484,18 @@ const ContractDetail = () => {
                         >
                           <FaShippingFast className="mr-2" /> Mark as Out for Delivery
                         </button>
-                )}
-              </div>
+                      )}
+                    </div>
                   </>
                 )}
-            </div>
-          )}
-
+              </div>
+            )}
+            
             {/* For final payment stage */}
-            {contract.status === 'payment_pending' && getCurrentPaymentStage(contract) === PAYMENT_STAGE.FINAL && (
+            {contract.status === 'payment_pending' && contract.currentPaymentStage === PAYMENT_STAGE.FINAL && (
               <div className="flex items-start">
                 <FaExclamationTriangle className="text-amber-600 mt-1 mr-2 flex-shrink-0" />
-              <div>
+                <div>
                   <p className="text-gray-800 mb-2">
                     <span className="font-medium">Delivery Complete:</span> 
                     {isBuyer 
@@ -2475,10 +2514,10 @@ const ContractDetail = () => {
                       <FaMoneyBillWave className="mr-2" /> Complete Final Payment
                     </button>
                   )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2515,21 +2554,12 @@ const ContractDetail = () => {
             {contract.status === 'payment_pending' && isBuyer && (
               <button
                 onClick={() => {
-                  const paymentStage = getCurrentPaymentStage(contract);
-                  if (!paymentStage) {
-                    toast.error('Cannot determine which payment to process.');
-                    return;
-                  }
-                  
-                  const percentage = paymentStage === PAYMENT_STAGE.ADVANCE 
-                    ? contract.paymentTerms?.advancePercentage || 20 
-                    : paymentStage === PAYMENT_STAGE.MIDTERM 
-                      ? contract.paymentTerms?.midtermPercentage || 50 
-                      : contract.paymentTerms?.finalPercentage || 30;
-                  
-                  const amount = (contract.totalAmount * percentage / 100).toFixed(2);
-                  
-                  if (window.confirm(`Confirm payment of ${formatCurrency(amount)}? This will automatically complete this stage.`)) {
+                  if (window.confirm(`Confirm payment of ${formatCurrency(contract.currentPaymentAmount || 
+                    ((contract.totalAmount * (contract.currentPaymentPercentage || 
+                      (contract.currentPaymentStage === PAYMENT_STAGE.ADVANCE ? contract.paymentTerms?.advancePercentage || 20 :
+                       contract.currentPaymentStage === PAYMENT_STAGE.MIDTERM ? contract.paymentTerms?.midtermPercentage || 50 :
+                       contract.paymentTerms?.finalPercentage || 30)) / 100).toFixed(2))
+                  )}? This will automatically complete this stage.`)) {
                     handleConfirmPayment();
                   }
                 }}
@@ -2622,4 +2652,4 @@ const ContractDetail = () => {
   );
 };
 
-export default ContractDetail; 
+export default ContractDetail;
