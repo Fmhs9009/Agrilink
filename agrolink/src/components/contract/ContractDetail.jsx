@@ -18,6 +18,8 @@ import { toast } from 'react-toastify';
 import { api } from '../../services/api';
 import { contractService } from '../../services/contractService';
 import { formatDistanceToNow } from 'date-fns';
+import authService from '../../services/auth/authService';
+import axios from 'axios';
 
 const ContractDetail = () => {
   const { id } = useParams();
@@ -125,6 +127,7 @@ const ContractDetail = () => {
       
       // First attempt: try /contracts/:id endpoint
       try {
+        console.log("Trying primary endpoint /contracts/:id");
         const response = await api.get(`/contracts/${id}`);
         console.log("API response for /contracts/:id:", response);
         
@@ -377,18 +380,39 @@ const ContractDetail = () => {
   };
 
   // Handle contract status updates
-  const updateContractStatus = async (newStatus, skipConfirmation = false) => {
+  const updateContractStatus = async (newStatus, skipConfirmation = false, paymentInfo = null) => {
     if (!skipConfirmation && !confirm(`Are you sure you want to update the contract status to ${newStatus}?`)) {
-      return;
+      return false;
     }
 
     try {
       setCancelLoading(true);
       
-      // Use contractService directly instead of generic api
-      await contractService.updateContractStatus(id, newStatus);
+      // If this is a payment-related status change from a buyer
+      const paymentStage = paymentInfo?.stage || getCurrentPaymentStage(contract);
+      const isPaymentStatus = ['active', 'harvested', 'completed'].includes(newStatus) && 
+                              contract.status === 'payment_pending';
       
-      toast.success(`Contract ${newStatus} successfully`);
+      // Use contractService directly instead of generic api
+      const response = await contractService.updateContractStatus(id, newStatus, paymentInfo);
+      
+      // Show appropriate message based on status
+      if (isPaymentStatus && paymentStage) {
+        // Calculate payment amount for the success message
+        const paymentPercentage = paymentInfo?.percentage || 
+          (paymentStage === PAYMENT_STAGE.ADVANCE ? 
+            safeGet(contract, 'paymentTerms.advancePercentage', 20) : 
+          paymentStage === PAYMENT_STAGE.MIDTERM ? 
+            safeGet(contract, 'paymentTerms.midtermPercentage', 50) : 
+            safeGet(contract, 'paymentTerms.finalPercentage', 30));
+            
+        const totalAmount = safeGet(contract, 'totalAmount', 0);
+        const paymentAmount = paymentInfo?.amount || (totalAmount * paymentPercentage / 100).toFixed(2);
+        
+        toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment of ${formatCurrency(paymentAmount)} completed successfully! Contract is now ${newStatus}.`);
+      } else {
+        toast.success(`Contract ${newStatus} successfully`);
+      }
       
       // Update local contract state
       setContract(prevContract => ({
@@ -399,7 +423,7 @@ const ContractDetail = () => {
       return true; // Return success for chaining
     } catch (error) {
       console.error(`Error updating contract to ${newStatus}:`, error);
-      toast.error(`Failed to update contract: ${error.message}`);
+      toast.error(`Failed to update contract: ${error.response?.data?.message || error.message || 'Unknown error'}`);
       return false; // Return failure for chaining
     } finally {
       setCancelLoading(false);
@@ -487,78 +511,45 @@ const ContractDetail = () => {
     return result === undefined ? defaultValue : result;
   };
 
-  // Update handleConfirmPayment to add payment entry to progressUpdates
-  const handleConfirmPayment = async () => {
+  // Create a function to add a payment record correctly
+  const createPaymentRecord = async (stage, amount, percentage) => {
     try {
-      // Determine which payment stage we're in based on contract status and updates
-      const paymentStage = getCurrentPaymentStage(contract);
+      // Create a proper payment record that will be recognized by the system
+      const paymentType = stage === PAYMENT_STAGE.ADVANCE ? 'advance' : 
+                          stage === PAYMENT_STAGE.MIDTERM ? 'midterm' : 'final';
       
-      if (!paymentStage) {
-        toast.error('Cannot determine which payment to process.');
-        return;
-      }
+      const token = authService.getToken();
+      if (!token) throw new Error('Authentication required');
       
-      let paymentPercentage = 0;
-      let nextStatus = '';
-      
-      // Set correct payment percentage and next status based on stage
-      if (paymentStage === PAYMENT_STAGE.ADVANCE) {
-        paymentPercentage = safeGet(contract, 'paymentTerms.advancePercentage', 20);
-        nextStatus = 'active';
-      } else if (paymentStage === PAYMENT_STAGE.MIDTERM) {
-        paymentPercentage = safeGet(contract, 'paymentTerms.midtermPercentage', 50);
-        nextStatus = 'harvested'; // After midterm payment, status should be harvested
-      } else if (paymentStage === PAYMENT_STAGE.FINAL) {
-        paymentPercentage = safeGet(contract, 'paymentTerms.finalPercentage', 30);
-        nextStatus = 'completed';
-      }
-      
-      // Calculate payment amount based on percentage
-      const totalAmount = safeGet(contract, 'totalAmount', 0);
-      const paymentAmount = (totalAmount * paymentPercentage / 100).toFixed(2);
-      
-      try {
-        if (isBuyer) {
-          // For buyers: Simply update the contract status directly
-          // This approach avoids permission issues for customers/buyers
-          await updateContractStatus(nextStatus, true);
-          
-          toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment completed successfully! Contract is now ${nextStatus}.`);
-        } else {
-          // For farmers: First create a progress update, then update status
-          // Create payment update using a valid enum type ('other') 
-          const formData = new FormData();
-          formData.append('updateType', 'other'); // Use 'other' instead of payment_stage
-          formData.append('description', `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment of ${formatCurrency(paymentAmount)} (${paymentPercentage}%) verified by farmer.`);
-          
-          // Add payment progressUpdate to the database
-          await contractService.addProgressUpdate(contract._id, formData);
-          
-          // Update contract status
-          await updateContractStatus(nextStatus, true);
-          
-          toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment verified successfully! Contract is now ${nextStatus}.`);
+      // Use the /payment endpoint directly instead of progress updates
+      const response = await axios.post(
+        `${process.env.REACT_APP_API_URL || 'http://localhost:4000/api/v1'}/contracts/${contract._id}/payment`, 
+        {
+          paymentType,
+          amount,
+          percentage,
+          description: `${stage.charAt(0).toUpperCase() + stage.slice(1)} payment of ${formatCurrency(amount)} (${percentage}%) completed by buyer.`
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         }
-        
-        // Refresh contract to get the updated data
-        fetchContractById();
-      } catch (error) {
-        const errorMsg = safeGet(error, 'response.data.message') || safeGet(error, 'message') || 'Unknown error occurred';
-        toast.error(`Failed to process payment: ${errorMsg}`);
-        console.error("Payment error:", error);
-      }
+      );
+      
+      return response.data.success;
     } catch (error) {
-      toast.error(`Failed to process payment: ${error.message}`);
-      console.error(error);
+      console.error('Error creating payment record:', error);
+      return false;
     }
   };
 
-  // Simplified handleVerifyPayment that relies on database records
-  const handleVerifyPayment = async () => {
-    if (window.confirm('Confirm that you have received the payment?')) {
+  // Update handleConfirmPayment to focus only on updating contract status for customers
+  const handleConfirmPayment = async () => {
+    if (window.confirm('Confirm that you have completed the payment?')) {
       try {
         const paymentStage = getCurrentPaymentStage(contract);
-        
         if (!paymentStage) {
           toast.error('Cannot determine which payment to verify.');
           return;
@@ -576,19 +567,168 @@ const ContractDetail = () => {
         }
         
         try {
+          // Calculate payment amount for the message
+          const paymentPercentage = 
+            paymentStage === PAYMENT_STAGE.ADVANCE ? 
+              safeGet(contract, 'paymentTerms.advancePercentage', 20) : 
+            paymentStage === PAYMENT_STAGE.MIDTERM ? 
+              safeGet(contract, 'paymentTerms.midtermPercentage', 50) : 
+              safeGet(contract, 'paymentTerms.finalPercentage', 30);
+            
+          const totalAmount = safeGet(contract, 'totalAmount', 0);
+          const paymentAmount = (totalAmount * paymentPercentage / 100).toFixed(2);
+          
           // Add verification record to progressUpdates using a valid enum type ('other')
+          console.log('Creating progress update for payment verification');
           const formData = new FormData();
           formData.append('updateType', 'other'); // Use 'other' instead of payment_stage_verified
-          formData.append('description', `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment verified by farmer.`);
-          await contractService.addProgressUpdate(contract._id, formData);
+          formData.append('description', `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment of ${formatCurrency(paymentAmount)} complete by buyer.`);
           
-          // Update contract status without confirmation
-          await updateContractStatus(nextStatus, true);
+          try {
+            await contractService.addProgressUpdate(contract._id, formData);
+            console.log('Progress update added successfully for payment verification');
+          } catch (progressError) {
+            console.error('Error adding progress update:', progressError);
+            toast.warning('Could not record verification in progress updates, continuing with status update.');
+          }
           
-          toast.success(`Payment verified! Contract ${nextStatus === 'active' ? 'is now active' : 'updated accordingly'}.`);
+          // Create payment info to pass to updateContractStatus
+          const paymentInfo = {
+            stage: paymentStage,
+            amount: paymentAmount,
+            percentage: paymentPercentage,
+            verified: true
+          };
           
-          // Refresh contract to get updated data from database
-          fetchContractById();
+          // Update contract status with payment info
+          console.log('Updating contract status with verification:', { nextStatus, paymentInfo });
+          const success = await updateContractStatus(nextStatus, true, paymentInfo);
+          
+          if (success) {
+            // First, update the contract in local state immediately
+            setContract(prevContract => ({
+              ...prevContract,
+              status: nextStatus
+            }));
+            
+            toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment completed! Contract is now ${nextStatus}.`);
+            
+            // Refresh contract after a short delay to ensure server has processed the update
+            setTimeout(() => {
+              console.log('Refreshing contract data after verification...');
+              fetchContractById();
+              
+              // Set a timeout to check if the contract status was properly updated
+              setTimeout(() => {
+                console.log('Checking contract status after refresh...', contract?.status);
+                if (contract?.status !== nextStatus) {
+                  console.log('Contract status not updated correctly, forcing page reload');
+                  toast.info('Refreshing page to update contract status...');
+                  window.location.reload();
+                }
+              }, 2000);
+            }, 1000);
+          } else {
+            toast.error('Failed to update contract status. Please try again.');
+          }
+        } catch (error) {
+          toast.error(`Failed to complete payment: ${error.response?.data?.message || error.message}`);
+          console.error("payment error:", error);
+        }
+      } catch (error) {
+        toast.error(`Failed to complete payment: ${error.message}`);
+        console.error(error);
+      }
+    }
+  };
+
+  // Simplified handleVerifyPayment that relies on database records
+  const handleVerifyPayment = async () => {
+    if (window.confirm('Confirm that you have received the payment?')) {
+      try {
+        const paymentStage = getCurrentPaymentStage(contract);
+        console.log(paymentStage)
+        if (!paymentStage) {
+          toast.error('Cannot determine which payment to verify.');
+          return;
+        }
+        
+        let nextStatus = 'active';
+        
+        // Determine next status based on payment stage
+        if (paymentStage === PAYMENT_STAGE.ADVANCE) {
+          nextStatus = 'active';
+        } else if (paymentStage === PAYMENT_STAGE.MIDTERM) {
+          nextStatus = 'harvested';
+        } else if (paymentStage === PAYMENT_STAGE.FINAL) {
+          nextStatus = 'completed';
+        }
+        
+        try {
+          // Calculate payment amount for the message
+          const paymentPercentage = 
+            paymentStage === PAYMENT_STAGE.ADVANCE ? 
+              safeGet(contract, 'paymentTerms.advancePercentage', 20) : 
+            paymentStage === PAYMENT_STAGE.MIDTERM ? 
+              safeGet(contract, 'paymentTerms.midtermPercentage', 50) : 
+              safeGet(contract, 'paymentTerms.finalPercentage', 30);
+            
+          const totalAmount = safeGet(contract, 'totalAmount', 0);
+          const paymentAmount = (totalAmount * paymentPercentage / 100).toFixed(2);
+          
+          // Add verification record to progressUpdates using a valid enum type ('other')
+          console.log('Creating progress update for payment verification');
+          const formData = new FormData();
+          formData.append('updateType', 'other'); // Use 'other' instead of payment_stage_verified
+          formData.append('description', `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment of ${formatCurrency(paymentAmount)} verified by farmer.`);
+          
+          try {
+            await contractService.addProgressUpdate(contract._id, formData);
+            console.log('Progress update added successfully for payment verification');
+          } catch (progressError) {
+            console.error('Error adding progress update:', progressError);
+            toast.warning('Could not record verification in progress updates, continuing with status update.');
+          }
+          
+          // Create payment info to pass to updateContractStatus
+          const paymentInfo = {
+            stage: paymentStage,
+            amount: paymentAmount,
+            percentage: paymentPercentage,
+            verified: true
+          };
+          
+          // Update contract status with payment info
+          console.log('Updating contract status with verification:', { nextStatus, paymentInfo });
+          const success = await updateContractStatus(nextStatus, true, paymentInfo);
+          
+          if (success) {
+            // First, update the contract in local state immediately
+            setContract(prevContract => ({
+              ...prevContract,
+              status: nextStatus
+            }));
+            
+            toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment verified! Contract is now ${nextStatus}.`);
+            
+            // Refresh contract after a short delay to ensure server has processed the update
+            setTimeout(() => {
+              console.log('Refreshing contract data after verification...');
+              fetchContractById();
+              
+              // Set a timeout to check if the contract status was properly updated
+              setTimeout(() => {
+                console.log('Checking contract status after refresh...', contract?.status);
+                if (contract?.status !== nextStatus) {
+                  console.log('Contract status not updated correctly, forcing page reload');
+                  toast.info('Refreshing page to update contract status...');
+                  window.location.reload();
+                }
+              }, 2000);
+            }, 1000);
+          } else {
+            toast.error('Failed to update contract status. Please try again.');
+          }
         } catch (error) {
           toast.error(`Failed to verify payment: ${error.response?.data?.message || error.message}`);
           console.error("Verification error:", error);
@@ -610,9 +750,10 @@ const ContractDetail = () => {
         // Refresh contract to get the updated status
         fetchContractById();
       }
-    } catch (error) {
-      toast.error(`Failed to accept contract: ${error.message}`);
-      console.error(error);
+    } catch (err) {
+      // Handle error properly without accessing properties that might not exist
+      console.error('Error in handleAcceptContract:', err);
+      toast.error('Failed to accept contract. Please try again.');
     }
   };
 
@@ -626,9 +767,9 @@ const ContractDetail = () => {
           toast.success('Contract has been rejected');
           fetchContractById();
         }
-      } catch (error) {
-        toast.error(`Failed to reject contract: ${error.message}`);
-        console.error(error);
+      } catch (err) {
+        console.error('Error in handleRejectContract:', err);
+        toast.error('Failed to reject contract. Please try again.');
       }
     }
   };
@@ -642,9 +783,9 @@ const ContractDetail = () => {
           toast.success('Contract has been marked as completed');
           fetchContractById();
         }
-      } catch (error) {
-        toast.error(`Failed to complete contract: ${error.message}`);
-        console.error(error);
+      } catch (err) {
+        console.error('Error in handleMarkAsCompleted:', err);
+        toast.error('Failed to complete contract. Please try again.');
       }
     }
   };

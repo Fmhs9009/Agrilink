@@ -322,9 +322,9 @@ exports.addProgressUpdate = catchAsyncErrors(async (req, res, next) => {
             return next(new ErrorHandler('Contract not found', 404));
         }
         
-        // Check if user is the farmer of this contract
-        if (contract.farmer.toString() !== req.user.id) {
-            return next(new ErrorHandler('Only the farmer can add progress updates', 403));
+        // Check if user is part of this contract
+        if (contract.farmer.toString() !== req.user.id && contract.buyer.toString() !== req.user.id) {
+            return next(new ErrorHandler('You are not authorized to add progress updates to this contract', 403));
         }
         
         // Add progress update

@@ -25,7 +25,7 @@ router.get('/buyer/contracts', verifyToken, isBuyer, contractController.getBuyer
 router.put('/:id/status', verifyToken, contractController.updateContractStatus);
 
 // Add progress update to contract
-router.post('/:id/progress', verifyToken, isFarmer, contractController.addProgressUpdate);
+router.post('/:id/progress', verifyToken, contractController.addProgressUpdate);
 
 // Negotiate contract terms
 router.post('/:id/negotiate', verifyToken, contractController.negotiateContract);
