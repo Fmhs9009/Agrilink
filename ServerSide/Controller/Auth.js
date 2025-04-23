@@ -12,7 +12,31 @@ const { sendEmail } = require('../utils/emailService');
 // Export the Signup function as a route handler
 exports.Signup = async (req, res) => {
   try {
-    const { Name, email, password, accountType, otp, farmName, FarmLocation } = req.body;
+    const { 
+      Name, 
+      email, 
+      password, 
+      accountType, 
+      otp, 
+      farmName, 
+      FarmLocation, 
+      contactNumber,
+      accountNumber,
+      ifscCode,
+      upiId
+    } = req.body;
+
+    console.log("Signup request received with data:", {
+      Name, 
+      email,
+      accountType,
+      farmName,
+      FarmLocation,
+      contactNumber,
+      hasAccountNumber: !!accountNumber,
+      hasIfscCode: !!ifscCode,
+      hasUpiId: !!upiId
+    });
 
     // Basic validation
     if (!Name || !email || !password || !accountType || !otp) {
@@ -28,6 +52,17 @@ exports.Signup = async (req, res) => {
         return res.status(400).json({
           success: false,
           Message: "Please provide all the required fields for farmers",
+        });
+      }
+      
+      // Validate bank details for farmers - at least one payment method must be provided
+      const hasUpi = !!upiId;
+      const hasBankAccount = !!(accountNumber && ifscCode);
+      
+      if (!hasUpi && !hasBankAccount) {
+        return res.status(400).json({
+          success: false,
+          Message: "Please provide either UPI ID or Bank Account details",
         });
       }
     }
@@ -53,17 +88,35 @@ exports.Signup = async (req, res) => {
     // Hash the password
     const hashPassword = await bcrypt.hash(password, 10);
 
-    // Create a new user
-    const userData = await User.create({
+    // Create user data object
+    const userDataObj = {
       Name,
       email,
       password: hashPassword,
-      contactNumber: null,
+      contactNumber,
       accountType,
       image: null,
       farmName: accountType === "farmer" ? farmName : null,
-      FarmLocation: accountType === "farmer" ? FarmLocation : null,
-    });
+      FarmLocation: FarmLocation || null,
+    };
+    
+    // Add bank details for farmers
+    if (accountType === "farmer") {
+      if (upiId) {
+        userDataObj.upiId = upiId;
+      }
+      if (accountNumber) {
+        userDataObj.accountNumber = accountNumber;
+      }
+      if (ifscCode) {
+        userDataObj.ifscCode = ifscCode;
+      }
+    }
+
+    console.log("Creating user with data:", userDataObj);
+
+    // Create a new user
+    const userData = await User.create(userDataObj);
 
     // Generate JWT token for the new user
     const payload = {
@@ -316,7 +369,18 @@ exports.sendOTP = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const { Name, contactNumber, address, city, farmName, FarmLocation } = req.body;
+    const { 
+      Name, 
+      contactNumber, 
+      address, 
+      city, 
+      farmName, 
+      FarmLocation, 
+      accountNumber,
+      ifscCode,
+      upiId 
+    } = req.body;
+    
     const userId = req.user.id;
 
     // Find the user
@@ -333,13 +397,15 @@ exports.updateProfile = async (req, res) => {
     if (Name) updateData.Name = Name;
     if (contactNumber) updateData.contactNumber = contactNumber;
     
-    // Update account type specific fields
-    if (user.accountType === 'customer') {
-      if (address) updateData.address = address;
-      if (city) updateData.city = city;
-    } else if (user.accountType === 'farmer') {
+    // Update FarmLocation for both farmers and customers
+    if (FarmLocation) updateData.FarmLocation = FarmLocation;
+    
+    // For farmers, also update farmName and bank details if provided
+    if (user.accountType === 'farmer') {
       if (farmName) updateData.farmName = farmName;
-      if (FarmLocation) updateData.FarmLocation = FarmLocation;
+      if (accountNumber) updateData.accountNumber = accountNumber;
+      if (ifscCode) updateData.ifscCode = ifscCode;
+      if (upiId) updateData.upiId = upiId;
     }
 
     // Update user

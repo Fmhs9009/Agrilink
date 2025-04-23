@@ -231,7 +231,10 @@ class AuthService {
 
   async register(userData) {
     try {
-      console.log('Attempting registration with:', userData);
+      console.log('Attempting registration with:', {
+        ...userData,
+        password: '********', // Don't log actual password
+      });
       
       // First, send OTP to the user's email
       const otpResponse = await authAxios.post('/auth/sendOTP', { email: userData.email });
@@ -266,7 +269,19 @@ class AuthService {
 
   async verifyOTP(otpData) {
     try {
-      console.log('Verifying OTP:', otpData);
+      console.log('Verifying OTP with:', {
+        email: otpData.email,
+        otp: otpData.otp,
+        hasUserData: !!otpData.userData
+      });
+      
+      if (!otpData.email || !otpData.otp) {
+        console.error('Email or OTP missing in request');
+        return {
+          success: false,
+          message: 'Both email and OTP are required'
+        };
+      }
       
       // First verify the OTP
       const verifyResponse = await authAxios.post('/auth/verifyotp', {
@@ -286,7 +301,24 @@ class AuthService {
       
       // If userData is provided, complete the signup process
       if (otpData.userData) {
-        console.log('Completing signup with:', otpData.userData);
+        console.log('Completing signup with user data:', {
+          ...otpData.userData,
+          password: '********' // Don't log actual password
+        });
+        
+        // Farmer validation before sending to server
+        if (otpData.userData.accountType === 'farmer' || otpData.userData.role === 'farmer') {
+          const hasUpi = !!otpData.userData.upiId;
+          const hasBankAccount = !!(otpData.userData.accountNumber && otpData.userData.ifscCode);
+          
+          if (!hasUpi && !hasBankAccount) {
+            console.error('Missing bank details for farmer');
+            return {
+              success: false,
+              message: 'Please provide either UPI ID or complete bank account details'
+            };
+          }
+        }
         
         // Prepare signup data
         const signupData = {
@@ -294,6 +326,7 @@ class AuthService {
           email: otpData.userData.email,
           password: otpData.userData.password,
           accountType: otpData.userData.accountType || otpData.userData.role,
+          contactNumber: otpData.userData.phone,
           otp: otpData.otp
         };
         
@@ -310,8 +343,37 @@ class AuthService {
           console.log('Added farm details:', { farmName: signupData.farmName, FarmLocation: signupData.FarmLocation });
         }
         
+        // Add bank details if user is a farmer
+        if (signupData.accountType === 'farmer') {
+          // Add individual bank details fields directly to signupData
+          if (otpData.userData.upiId) {
+            signupData.upiId = otpData.userData.upiId;
+          }
+          if (otpData.userData.accountNumber) {
+            signupData.accountNumber = otpData.userData.accountNumber;
+          }
+          if (otpData.userData.ifscCode) {
+            signupData.ifscCode = otpData.userData.ifscCode;
+          }
+          console.log('Added bank details:', { 
+            upiId: signupData.upiId, 
+            accountNumber: signupData.accountNumber ? '[PRESENT]' : '[NOT PROVIDED]', 
+            ifscCode: signupData.ifscCode ? '[PRESENT]' : '[NOT PROVIDED]'
+          });
+        }
+        
+        // Add location for customer as well
+        if ((signupData.accountType === 'customer') && otpData.userData.farmLocation) {
+          signupData.FarmLocation = otpData.userData.farmLocation;
+          console.log('Added customer location:', { FarmLocation: signupData.FarmLocation });
+        }
+        
         // Call signup endpoint
-        console.log('Sending signup data to backend:', signupData);
+        console.log('Sending signup data to backend:', {
+          ...signupData,
+          password: '[PROTECTED]'
+        });
+        
         const signupResponse = await authAxios.post('/auth/signup', signupData);
         
         if (!signupResponse.data.success) {
@@ -507,6 +569,20 @@ class AuthService {
         success: false, 
         message: error.response?.data?.message || 'Failed to reset password' 
       };
+    }
+  }
+
+  /**
+   * Get the current user's role
+   * @returns {string|null} - User role or null if not logged in
+   */
+  getUserRole() {
+    try {
+      const user = this.getUser();
+      return user ? user.role : null;
+    } catch (error) {
+      console.error('Error getting user role:', error);
+      return null;
     }
   }
 }

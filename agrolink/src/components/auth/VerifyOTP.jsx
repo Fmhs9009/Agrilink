@@ -20,12 +20,25 @@ const VerifyOTP = () => {
   const [isResending, setIsResending] = useState(false);
   const [resendDisabled, setResendDisabled] = useState(false);
   
+  // Pre-validate user data when component loads
   useEffect(() => {
     if (!email) {
       navigate(ROUTES.REGISTER);
       toast.error('Please sign up first');
+      return;
     }
-  }, [email, navigate]);
+    
+    // Validate bank details for farmers
+    if (signupData?.role === 'farmer' || signupData?.accountType === 'farmer') {
+      const hasUpi = !!signupData.upiId;
+      const hasBankAccount = !!(signupData.accountNumber && signupData.ifscCode);
+      
+      if (!hasUpi && !hasBankAccount) {
+        navigate(ROUTES.REGISTER);
+        toast.error('Missing bank details. Please provide UPI ID or bank account information.');
+      }
+    }
+  }, [email, navigate, signupData]);
   
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -38,7 +51,32 @@ const VerifyOTP = () => {
     setIsLoading(true);
     
     try {
-      console.log('Submitting OTP verification with:', { email, otp, userData: signupData });
+      // Validate required data before proceeding
+      if (!signupData) {
+        setError('Registration data is missing. Please return to the signup page.');
+        return;
+      }
+      
+      // Final check for bank details for farmers
+      if (signupData.role === 'farmer' || signupData.accountType === 'farmer') {
+        const hasUpi = !!signupData.upiId;
+        const hasBankAccount = !!(signupData.accountNumber && signupData.ifscCode);
+        
+        if (!hasUpi && !hasBankAccount) {
+          setError('Missing bank details. Please return to signup and provide the required information.');
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      console.log('Submitting OTP verification with:', { 
+        email, 
+        otp, 
+        hasFarmDetails: !!signupData.farmLocation,
+        hasUpi: !!signupData.upiId, 
+        hasAccountNumber: !!signupData.accountNumber,
+        role: signupData.role || signupData.accountType
+      });
       
       const result = await authService.verifyOTP({
         email: email,
@@ -64,7 +102,7 @@ const VerifyOTP = () => {
       }
     } catch (error) {
       console.error('OTP verification error:', error);
-      setError('An error occurred during verification');
+      setError(error.message || 'An error occurred during verification');
       toast.error('Verification failed');
     } finally {
       setIsLoading(false);
@@ -177,8 +215,8 @@ const VerifyOTP = () => {
 
           <div className="mt-6 flex items-center justify-between">
             <div className="text-sm">
-              <Link to={ROUTES.LOGIN} className="font-medium text-green-600 hover:text-green-500">
-                <FaArrowLeft className="inline mr-1" /> Back to login
+              <Link to={ROUTES.REGISTER} className="font-medium text-green-600 hover:text-green-500">
+                <FaArrowLeft className="inline mr-1" /> Back to registration
               </Link>
             </div>
             <div className="text-sm">

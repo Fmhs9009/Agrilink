@@ -27,3 +27,11 @@ const mailSender = require("../utils/mailSender");
     next();
  })
  module.exports=mongoose.model("OTP",otpSchema);
+
+
+
+
+
+
+
+  

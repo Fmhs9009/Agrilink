@@ -1,12 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
-import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { Provider } from "react-redux";
-import { Elements } from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
 import { configureStore } from "@reduxjs/toolkit";
 import { persistStore, persistReducer } from "redux-persist";
 import { PersistGate } from "redux-persist/integration/react";
@@ -20,9 +18,6 @@ import {
   PURGE,
   REGISTER,
 } from "redux-persist";
-
-// Replace with your own publishable key
-const stripePromise = loadStripe("your-publishable-key-here");
 
 // Redux Persist Config
 const persistConfig = {
@@ -51,9 +46,7 @@ root.render(
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
         <BrowserRouter>
-          <Elements stripe={stripePromise}>
-            <App />
-          </Elements>
+          <App />
           <Toaster 
             position="top-right"
             toastOptions={{

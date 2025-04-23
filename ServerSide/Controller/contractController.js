@@ -259,8 +259,23 @@ exports.updateContractStatus = catchAsyncErrors(async (req, res, next) => {
     try {
         const { status } = req.body;
         
-        if (!status) {
-            return next(new ErrorHandler('Please provide status', 400));
+        // Validate status
+        const validStatuses = [
+            'requested', 
+            'negotiating', 
+            'payment_pending', // Waiting for payment from buyer
+            'accepted', 
+            'active', 
+            'readyForHarvest', 
+            'harvested', 
+            'delivered', 
+            'completed', 
+            'cancelled', 
+            'disputed'
+        ];
+        
+        if (!validStatuses.includes(status)) {
+            return next(new ErrorHandler('Invalid status', 400));
         }
         
         const contract = await Contract.findById(req.params.id);
@@ -269,10 +284,14 @@ exports.updateContractStatus = catchAsyncErrors(async (req, res, next) => {
             return next(new ErrorHandler('Contract not found', 404));
         }
         
-        // Check if user is authorized to update this contract
+        // Check if user is authorized to update status
         if (contract.farmer.toString() !== req.user.id && contract.buyer.toString() !== req.user.id) {
             return next(new ErrorHandler('You are not authorized to update this contract', 403));
         }
+        
+        // Validate status transitions
+        // For example, can't go from cancelled to active
+        // Implement more complex validation if needed
         
         // Update status
         contract.status = status;
@@ -280,7 +299,7 @@ exports.updateContractStatus = catchAsyncErrors(async (req, res, next) => {
         
         res.status(200).json({
             success: true,
-            message: 'Contract status updated successfully',
+            message: `Contract status updated to ${status}`,
             contract
         });
     } catch (error) {
@@ -303,9 +322,9 @@ exports.addProgressUpdate = catchAsyncErrors(async (req, res, next) => {
             return next(new ErrorHandler('Contract not found', 404));
         }
         
-        // Check if user is the farmer of this contract
-        if (contract.farmer.toString() !== req.user.id) {
-            return next(new ErrorHandler('Only the farmer can add progress updates', 403));
+        // Check if user is part of this contract
+        if (contract.farmer.toString() !== req.user.id && contract.buyer.toString() !== req.user.id) {
+            return next(new ErrorHandler('You are not authorized to add progress updates to this contract', 403));
         }
         
         // Add progress update
@@ -390,13 +409,13 @@ exports.acceptContract = catchAsyncErrors(async (req, res, next) => {
             return next(new ErrorHandler(`Cannot accept contract in ${contract.status} status`, 400));
         }
         
-        // Update status to accepted
-        contract.status = 'accepted';
+        // Update status to payment_pending instead of accepted
+        contract.status = 'payment_pending';
         await contract.save();
         
         res.status(200).json({
             success: true,
-            message: 'Contract accepted successfully',
+            message: 'Contract accepted successfully. Waiting for payment.',
             contract
         });
     } catch (error) {

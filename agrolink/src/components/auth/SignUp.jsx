@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { toast } from 'react-hot-toast';
-import { FaUser, FaEnvelope, FaLock, FaEye, FaEyeSlash, FaPhone, FaMapMarkerAlt } from 'react-icons/fa';
+import { FaUser, FaEnvelope, FaLock, FaEye, FaEyeSlash, FaPhone, FaMapMarkerAlt, FaUniversity, FaQrcode } from 'react-icons/fa';
 import { setSignupData } from '../../reducer/Slice/authSlice';
 import authService from '../../services/auth/authService';
-import { ROLES, ROUTES } from '../../config/constants';
+import { ROLES, ROUTES, INDIAN_STATES } from '../../config/constants';
 import logo from '../../assets/Logo.png';
 
 const SignUp = () => {
@@ -25,7 +25,10 @@ const SignUp = () => {
     pincode: '',
     agreeToTerms: false,
     farmName: '', // Add farmName field
-    farmLocation: '' // Add farmLocation field
+    farmLocation: '', // Add farmLocation field
+    accountNumber: '',
+    ifscCode: '',
+    upiId: ''
   });
   
   const [errors, setErrors] = useState({});
@@ -36,10 +39,19 @@ const SignUp = () => {
   
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? checked : value
-    });
+    
+    // For IFSC code, convert to uppercase immediately
+    if (name === 'ifscCode') {
+      setFormData({
+        ...formData,
+        [name]: value.toUpperCase()
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: type === 'checkbox' ? checked : value
+      });
+    }
     
     // Clear error when user types
     if (errors[name]) {
@@ -113,15 +125,67 @@ const SignUp = () => {
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
+  // Add a function to check if bank details are valid
+  const areBankDetailsValid = () => {
+    if (formData.role !== 'farmer') return true;
+    
+    // If farmer, must have either UPI or both account number and IFSC
+    const hasUpi = !!formData.upiId;
+    const hasBankAccount = !!(formData.accountNumber && formData.ifscCode);
+    
+    return hasUpi || hasBankAccount;
+  };
+
+  const validateStep3 = () => {
+    const newErrors = {};
+    
+    // Only require bank details for farmers
+    if (formData.role === 'farmer') {
+      // Either UPI ID or both Account Number and IFSC should be provided
+      if (!formData.upiId && (!formData.accountNumber || !formData.ifscCode)) {
+        newErrors.bankDetails = 'Please provide either UPI ID or both Account Number and IFSC Code';
+      }
+      
+      // Validate UPI ID format if provided
+      if (formData.upiId && !formData.upiId.includes('@')) {
+        newErrors.upiId = 'Please enter a valid UPI ID (should contain @)';
+      }
+      
+      // Validate account number if provided
+      if (formData.accountNumber && !/^\d{9,18}$/.test(formData.accountNumber)) {
+        newErrors.accountNumber = 'Account number should be 9-18 digits';
+      }
+      
+      // Validate IFSC code if provided - correct format for Indian banks
+      // Use a more permissive regex that allows both uppercase and lowercase
+      if (formData.ifscCode && !/^[A-Za-z]{4}[0][A-Za-z0-9]{6}$/i.test(formData.ifscCode)) {
+        newErrors.ifscCode = 'Please enter a valid IFSC code (e.g., SBIN0123456)';
+      }
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
   
   const handleNextStep = () => {
-    if (validateStep1()) {
+    if (currentStep === 1 && validateStep1()) {
       setCurrentStep(2);
+    } else if (currentStep === 2 && validateStep2()) {
+      // Only proceed to step 3 for farmers
+      if (formData.role === 'farmer') {
+        setCurrentStep(3);
+      } else if (formData.role === 'customer') {
+        // For customers, submit the form directly after step 2
+        handleSubmit(new Event('submit'));
+      }
     }
   };
   
   const handlePrevStep = () => {
-    setCurrentStep(1);
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
   };
   
   const handleSubmit = async (e) => {
@@ -132,8 +196,33 @@ const SignUp = () => {
       return;
     }
     
-    if (!validateStep2()) {
-      return;
+    if (currentStep === 2) {
+      if (formData.role === 'customer') {
+        // For customers, submit directly after step 2
+        if (!validateStep2()) {
+          return;
+        }
+      } else {
+        // For farmers, proceed to step 3
+        handleNextStep();
+        return;
+      }
+    }
+    
+    // For step 3 (bank details), validate before submission
+    if (formData.role === 'farmer' && currentStep === 3) {
+      if (!validateStep3()) {
+        return;
+      }
+      
+      // Additional safety check to make sure bank details are present
+      if (!areBankDetailsValid()) {
+        setErrors({
+          ...errors,
+          bankDetails: 'Please provide either UPI ID or complete bank account details'
+        });
+        return;
+      }
     }
     
     setIsLoading(true);
@@ -146,13 +235,30 @@ const SignUp = () => {
         password: formData.password,
         accountType: formData.role,
         role: formData.role,
-        phone: formData.phone
+        phone: formData.phone,
       };
       
-      // Add farm details if user is a farmer
+      // Create location string from address fields
+      const locationString = formData.address + ', ' + formData.city + ', ' + formData.state + ' - ' + formData.pincode;
+      
+      // Add farm details for farmer
       if (formData.role === 'farmer') {
         userData.farmName = formData.city; // Use city as farmName
-        userData.farmLocation = formData.address + ', ' + formData.city + ', ' + formData.state + ' - ' + formData.pincode; // Combine address fields for farmLocation
+        userData.farmLocation = locationString;
+        
+        // Add bank details for farmers directly to userData
+        if (formData.upiId) {
+          userData.upiId = formData.upiId;
+        }
+        if (formData.accountNumber) {
+          userData.accountNumber = formData.accountNumber;
+        }
+        if (formData.ifscCode) {
+          userData.ifscCode = formData.ifscCode;
+        }
+      } else if (formData.role === 'customer') {
+        // For customers, add the location too
+        userData.farmLocation = locationString;
       }
       
       const result = await authService.register(userData);
@@ -242,10 +348,25 @@ const SignUp = () => {
               }`}>
                 2
               </div>
+              {formData.role === 'farmer' && (
+                <>
+                  <div className={`flex-1 h-1 mx-2 ${
+                    currentStep >= 3 ? 'bg-green-600' : 'bg-gray-200'
+                  }`}></div>
+                  <div className={`flex items-center justify-center h-8 w-8 rounded-full ${
+                    currentStep >= 3 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'
+                  }`}>
+                    3
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-xs">Account Details</span>
-              <span className="text-xs">Personal Information</span>
+              <span className="text-xs">Account</span>
+              <span className="text-xs">Address</span>
+              {formData.role === 'farmer' && (
+                <span className="text-xs">Payment</span>
+              )}
             </div>
           </div>
           
@@ -490,18 +611,22 @@ const SignUp = () => {
                     <label htmlFor="state" className="block text-sm font-medium text-gray-700">
                       State
                     </label>
-                    <input
+                    <select
                       id="state"
                       name="state"
-                      type="text"
-                      autoComplete="address-level1"
                       value={formData.state}
                       onChange={handleChange}
                       className={`mt-1 block w-full py-2 px-3 border ${
                         errors.state ? 'border-red-300' : 'border-gray-300'
                       } rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm`}
-                      placeholder="Maharashtra"
-                    />
+                    >
+                      <option value="">Select State</option>
+                      {INDIAN_STATES.map((state) => (
+                        <option key={state} value={state}>
+                          {state}
+                        </option>
+                      ))}
+                    </select>
                     {errors.state && (
                       <p className="mt-2 text-sm text-red-600">{errors.state}</p>
                     )}
@@ -550,6 +675,120 @@ const SignUp = () => {
                 )}
 
                 <div className="flex space-x-4">
+                  <button
+                    type="button"
+                    onClick={handlePrevStep}
+                    className="flex-1 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextStep}
+                    className="flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    {formData.role === 'customer' ? 'Create Account' : 'Next'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 3 && formData.role === 'farmer' && (
+              <div className="space-y-6">
+                <div>
+                  <label htmlFor="upiId" className="block text-sm font-medium text-gray-700">
+                    UPI ID (Optional if providing bank details)
+                  </label>
+                  <div className="mt-1 relative rounded-md shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <FaQrcode className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <input
+                      id="upiId"
+                      name="upiId"
+                      type="text"
+                      value={formData.upiId}
+                      onChange={handleChange}
+                      className={`block w-full pl-10 pr-3 py-2 border ${
+                        errors.upiId ? 'border-red-300' : 'border-gray-300'
+                      } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm`}
+                      placeholder="yourname@upi"
+                    />
+                  </div>
+                  {errors.upiId && (
+                    <p className="mt-2 text-sm text-red-600">{errors.upiId}</p>
+                  )}
+                </div>
+
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">OR</h4>
+                  
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="accountNumber" className="block text-sm font-medium text-gray-700">
+                        Bank Account Number
+                      </label>
+                      <div className="mt-1 relative rounded-md shadow-sm">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <FaUniversity className="h-5 w-5 text-gray-400" />
+                        </div>
+                        <input
+                          id="accountNumber"
+                          name="accountNumber"
+                          type="text"
+                          value={formData.accountNumber}
+                          onChange={handleChange}
+                          className={`block w-full pl-10 pr-3 py-2 border ${
+                            errors.accountNumber ? 'border-red-300' : 'border-gray-300'
+                          } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm`}
+                          placeholder="Enter account number"
+                        />
+                      </div>
+                      {errors.accountNumber && (
+                        <p className="mt-2 text-sm text-red-600">{errors.accountNumber}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="ifscCode" className="block text-sm font-medium text-gray-700">
+                        IFSC Code
+                      </label>
+                      <div className="mt-1 relative rounded-md shadow-sm">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <FaUniversity className="h-5 w-5 text-gray-400" />
+                        </div>
+                        <input
+                          id="ifscCode"
+                          name="ifscCode"
+                          type="text"
+                          value={formData.ifscCode}
+                          onChange={handleChange}
+                          onBlur={(e) => {
+                            // Convert to uppercase when the user leaves the field
+                            setFormData({
+                              ...formData,
+                              ifscCode: formData.ifscCode.toUpperCase()
+                            });
+                          }}
+                          className={`block w-full pl-10 pr-3 py-2 border ${
+                            errors.ifscCode ? 'border-red-300' : 'border-gray-300'
+                          } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm`}
+                          placeholder="Enter IFSC code (e.g., SBIN0123456)"
+                          style={{ textTransform: 'uppercase' }}
+                        />
+                      </div>
+                      {errors.ifscCode && (
+                        <p className="mt-2 text-sm text-red-600">{errors.ifscCode}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {errors.bankDetails && (
+                  <p className="mt-2 text-sm text-red-600">{errors.bankDetails}</p>
+                )}
+
+                <div className="flex space-x-4 mt-6">
                   <button
                     type="button"
                     onClick={handlePrevStep}

@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-hot-toast';
 import authService from '../../services/auth/authService';
 import { updateUserData } from '../../reducer/Slice/authSlice';
-import { FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaWarehouse } from 'react-icons/fa';
+import { FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaWarehouse, FaUniversity, FaQrcode } from 'react-icons/fa';
 
 const ProfileEdit = () => {
   const user = useSelector((state) => state.auth.loginData);
@@ -15,6 +15,9 @@ const ProfileEdit = () => {
     phone: '',
     address: '',
     farmLocation: '',
+    accountNumber: '',
+    ifscCode: '',
+    upiId: '',
   });
   const [error, setError] = useState('');
 
@@ -26,7 +29,10 @@ const ProfileEdit = () => {
         email: user.email || '',
         phone: user.contactNumber || '',
         address: user.address || '',
-        farmLocation: user.farmLocation || user.FarmLocation || '',
+        farmLocation: user.FarmLocation || '',
+        accountNumber: user.accountNumber || '',
+        ifscCode: user.ifscCode || '',
+        upiId: user.upiId || '',
       });
     }
   }, [user]);
@@ -48,9 +54,16 @@ const ProfileEdit = () => {
     const backendData = {
       Name: formData.name,
       contactNumber: formData.phone,
-      address: user?.accountType === 'customer' ? formData.address : undefined,
-      FarmLocation: user?.accountType === 'farmer' ? formData.farmLocation : undefined,
+      // FarmLocation for both farmers and customers
+      FarmLocation: formData.farmLocation,
     };
+    
+    // Add bank details for farmers
+    if (user?.accountType === 'farmer') {
+      backendData.accountNumber = formData.accountNumber;
+      backendData.ifscCode = formData.ifscCode;
+      backendData.upiId = formData.upiId;
+    }
     
     try {
       const result = await authService.updateProfile(backendData);
@@ -61,12 +74,14 @@ const ProfileEdit = () => {
           ...user,
           Name: formData.name,
           contactNumber: formData.phone,
+          FarmLocation: formData.farmLocation
         };
         
-        if (user?.accountType === 'customer') {
-          updatedUser.address = formData.address;
-        } else if (user?.accountType === 'farmer') {
-          updatedUser.FarmLocation = formData.farmLocation;
+        // Add bank details for farmers
+        if (user?.accountType === 'farmer') {
+          updatedUser.accountNumber = formData.accountNumber;
+          updatedUser.ifscCode = formData.ifscCode;
+          updatedUser.upiId = formData.upiId;
         }
         
         dispatch(updateUserData(updatedUser));
@@ -176,48 +191,88 @@ const ProfileEdit = () => {
                 </div>
               </div>
 
-              {user?.accountType === 'customer' && (
-                <div className="relative">
-                  <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
-                    Address
-                  </label>
-                  <div className="relative rounded-md shadow-sm">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <FaMapMarkerAlt className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      type="text"
-                      name="address"
-                      id="address"
-                      value={formData.address}
-                      onChange={handleChange}
-                      className="pl-10 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500"
-                      placeholder="Not given previously"
-                    />
+              <div className="relative">
+                <label htmlFor="farmLocation" className="block text-sm font-medium text-gray-700 mb-1">
+                  {user?.accountType === 'farmer' ? 'Farm Location' : 'Address'}
+                </label>
+                <div className="relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FaMapMarkerAlt className="h-5 w-5 text-gray-400" />
                   </div>
+                  <input
+                    type="text"
+                    name="farmLocation"
+                    id="farmLocation"
+                    value={formData.farmLocation}
+                    onChange={handleChange}
+                    className="pl-10 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500"
+                    placeholder="Not given previously"
+                  />
                 </div>
-              )}
+              </div>
 
               {user?.accountType === 'farmer' && (
-                <div className="relative">
-                  <label htmlFor="farmLocation" className="block text-sm font-medium text-gray-700 mb-1">
-                    Farm Location
-                  </label>
-                  <div className="relative rounded-md shadow-sm">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <FaMapMarkerAlt className="h-5 w-5 text-gray-400" />
+                <>
+                  <div className="relative">
+                    <label htmlFor="upiId" className="block text-sm font-medium text-gray-700 mb-1">
+                      UPI ID
+                    </label>
+                    <div className="relative rounded-md shadow-sm">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <FaQrcode className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        name="upiId"
+                        id="upiId"
+                        value={formData.upiId}
+                        onChange={handleChange}
+                        className="pl-10 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        placeholder="example@upi"
+                      />
                     </div>
-                    <input
-                      type="text"
-                      name="farmLocation"
-                      id="farmLocation"
-                      value={formData.farmLocation}
-                      onChange={handleChange}
-                      className="pl-10 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500"
-                      placeholder="Not given previously"
-                    />
                   </div>
-                </div>
+
+                  <div className="relative">
+                    <label htmlFor="accountNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                      Bank Account Number
+                    </label>
+                    <div className="relative rounded-md shadow-sm">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <FaUniversity className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        name="accountNumber"
+                        id="accountNumber"
+                        value={formData.accountNumber}
+                        onChange={handleChange}
+                        className="pl-10 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        placeholder="Enter account number"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <label htmlFor="ifscCode" className="block text-sm font-medium text-gray-700 mb-1">
+                      IFSC Code
+                    </label>
+                    <div className="relative rounded-md shadow-sm">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <FaUniversity className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        name="ifscCode"
+                        id="ifscCode"
+                        value={formData.ifscCode}
+                        onChange={handleChange}
+                        className="pl-10 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        placeholder="Enter IFSC code"
+                      />
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 

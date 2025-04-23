@@ -147,9 +147,10 @@ const contractService = {
    * Update contract status
    * @param {string} id - Contract ID
    * @param {string} status - New status
+   * @param {Object} paymentInfo - Optional payment information
    * @returns {Promise<Object>} - Updated contract
    */
-  updateContractStatus: async (id, status) => {
+  updateContractStatus: async (id, status, paymentInfo = null) => {
     try {
       const token = authService.getToken();
       
@@ -157,13 +158,34 @@ const contractService = {
         throw new Error('Authentication required');
       }
       
-      const response = await axios.put(`${API_BASE_URL}/contracts/${id}/status`, { status }, {
+      // Prepare request data with status and any additional info
+      const requestData = { status };
+      
+      // If payment info is provided, include it in the request
+      if (paymentInfo) {
+        console.log('Including payment info in contract status update:', paymentInfo);
+        requestData.paymentInfo = paymentInfo;
+        // Always include this flag for payment-related status changes
+        requestData.isPaymentConfirmation = true;
+      } 
+      // For payment-related status changes from a customer, add a flag
+      else if (authService.getUserRole() === 'customer' && 
+              ['active', 'harvested', 'completed'].includes(status)) {
+        console.log('Adding isPaymentConfirmation flag for customer-initiated status change');
+        requestData.isPaymentConfirmation = true;
+      }
+      
+      console.log(`Sending contract status update request: ${id} -> ${status}`, requestData);
+      
+      // Both farmers and buyers can use this endpoint
+      const response = await axios.put(`${API_BASE_URL}/contracts/${id}/status`, requestData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
       
+      console.log('Contract status update response:', response.data);
       return response.data;
     } catch (error) {
       console.error(`Error updating contract ${id} status:`, error);
@@ -185,6 +207,10 @@ const contractService = {
         throw new Error('Authentication required');
       }
       
+      // Remove the restriction that prevented buyers from creating payment updates
+      // This will allow both farmers and buyers to create payment progress updates
+      
+      // For all cases, proceed with the regular progress update
       const response = await axios.post(`${API_BASE_URL}/contracts/${id}/progress`, updateData, {
         headers: {
           Authorization: `Bearer ${token}`,

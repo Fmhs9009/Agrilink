@@ -53,12 +53,25 @@ const userSchema = new mongoose.Schema({
     },
   ],
   FarmName:{
-    type:String,
+    type: String,
   //  require:true
   },
   FarmLocation:{
-    type:String,
+    type: String,
    // require:true
+  },
+  // Bank details for farmers
+  accountNumber: {
+    type: String,
+    require: false,
+  },
+  ifscCode: {
+    type: String,
+    require: false,
+  },
+  upiId: {
+    type: String,
+    require: false,
   }
 });
 module.exports = mongoose.model("User", userSchema);
