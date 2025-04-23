@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FaFilter, FaSearch, FaSort, FaFileContract, FaExclamationTriangle } from 'react-icons/fa';
+import { 
+  FaFilter, FaSearch, FaSort, FaFileContract, FaExclamationTriangle, 
+  FaChartLine, FaMoneyBillWave, FaHandshake, FaBalanceScale,
+  FaArrowUp, FaArrowDown, FaCalendarAlt, FaCheckCircle, 
+  FaTimes, FaSpinner, FaHourglassHalf, FaUserTie, FaLeaf
+} from 'react-icons/fa';
 import ContractSummaryList from './ContractSummaryList';
 import { contractAPI } from '../../services/api';
 import { formatCurrency, formatDate } from '../../utils/helpers';
@@ -153,22 +158,45 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
     setCurrentPage(1); // Reset to first page when search changes
   };
 
+  // Status badge styling
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      requested: { bg: 'bg-amber-100', text: 'text-amber-800', icon: <FaHourglassHalf className="mr-1.5" /> },
+      negotiating: { bg: 'bg-purple-100', text: 'text-purple-800', icon: <FaBalanceScale className="mr-1.5" /> },
+      active: { bg: 'bg-green-100', text: 'text-green-800', icon: <FaHandshake className="mr-1.5" /> },
+      completed: { bg: 'bg-blue-100', text: 'text-blue-800', icon: <FaCheckCircle className="mr-1.5" /> },
+      cancelled: { bg: 'bg-red-100', text: 'text-red-800', icon: <FaTimes className="mr-1.5" /> },
+    };
+    
+    const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-800', icon: <FaSpinner className="mr-1.5" /> };
+    
+    return (
+      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        {config.icon}
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+    );
+  };
+
   if (loading && contracts.length === 0) {
     return (
-      <div className="flex justify-center py-20">
-        <LoadingSpinner />
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <div className="text-center">
+          <LoadingSpinner size="lg" />
+          <p className="mt-4 text-gray-600">Loading your contracts...</p>
+        </div>
       </div>
     );
   }
 
   if (error && contracts.length === 0) {
     return (
-      <div className="bg-white shadow-md rounded-lg p-8 text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 mb-4">
-          <FaExclamationTriangle className="h-8 w-8 text-red-600" />
+      <div className="bg-white shadow-lg rounded-xl p-8 text-center max-w-2xl mx-auto">
+        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-100 mb-6">
+          <FaExclamationTriangle className="h-10 w-10 text-red-600" />
         </div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Contracts</h3>
-        <p className="text-gray-500 mb-6">
+        <h3 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Contracts</h3>
+        <p className="text-gray-600 mb-6 text-lg">
           {error === "You must be logged in to view contracts" 
             ? "You need to sign in to view your contracts." 
             : `${error}. Please try again or contact support if the problem persists.`}
@@ -176,14 +204,14 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
         <div className="space-x-4">
           <button
             onClick={fetchContracts}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none"
+            className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none transition-all hover:shadow-lg"
           >
             Try Again
           </button>
           {error === "You must be logged in to view contracts" && (
             <button
               onClick={() => navigate('/login', { state: { from: location.pathname + location.search } })}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+              className="inline-flex items-center px-6 py-3 border border-gray-300 text-base font-medium rounded-xl shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none transition-all"
             >
               Sign In
             </button>
@@ -194,40 +222,76 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {title && <h1 className="text-2xl font-bold text-gray-800 mb-6">{title}</h1>}
+    <div className="max-w-7xl mx-auto">
+      {title && (
+        <div className="flex items-center mb-8">
+          <FaHandshake className="text-green-600 mr-3 text-3xl" />
+          <h1 className="text-3xl font-bold text-gray-800">{title}</h1>
+        </div>
+      )}
       
-      {/* Stats Summary */}
+      {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white shadow-md rounded-lg p-4">
-            <p className="text-sm text-gray-500">Total Contracts</p>
-            <p className="text-2xl font-bold">{stats.total || 0}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white shadow-lg rounded-xl p-6 border-l-4 border-green-500 transition-transform hover:scale-105">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm font-medium text-gray-500 uppercase">Total Contracts</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.total || 0}</p>
+              </div>
+              <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
+                <FaFileContract className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
           </div>
-          <div className="bg-white shadow-md rounded-lg p-4">
-            <p className="text-sm text-gray-500">Active Contracts</p>
-            <p className="text-2xl font-bold text-green-600">{stats.byStatus?.active || 0}</p>
+          
+          <div className="bg-white shadow-lg rounded-xl p-6 border-l-4 border-indigo-500 transition-transform hover:scale-105">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm font-medium text-gray-500 uppercase">Active Contracts</p>
+                <p className="text-2xl font-bold text-indigo-600">{stats.byStatus?.active || 0}</p>
+              </div>
+              <div className="h-12 w-12 bg-indigo-100 rounded-full flex items-center justify-center">
+                <FaHandshake className="h-6 w-6 text-indigo-600" />
+              </div>
+            </div>
           </div>
-          <div className="bg-white shadow-md rounded-lg p-4">
-            <p className="text-sm text-gray-500">Total Invested</p>
-            <p className="text-2xl font-bold text-blue-600">₹{formatCurrency(stats.totalValue || 0)}</p>
+          
+          <div className="bg-white shadow-lg rounded-xl p-6 border-l-4 border-amber-500 transition-transform hover:scale-105">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm font-medium text-gray-500 uppercase">Total Invested</p>
+                <p className="text-2xl font-bold text-amber-600">₹{formatCurrency(stats.totalValue || 0)}</p>
+              </div>
+              <div className="h-12 w-12 bg-amber-100 rounded-full flex items-center justify-center">
+                <FaMoneyBillWave className="h-6 w-6 text-amber-600" />
+              </div>
+            </div>
           </div>
-          <div className="bg-white shadow-md rounded-lg p-4">
-            <p className="text-sm text-gray-500">Avg. Contract Value</p>
-            <p className="text-2xl font-bold">₹{formatCurrency(stats.averageValue || 0)}</p>
+          
+          <div className="bg-white shadow-lg rounded-xl p-6 border-l-4 border-blue-500 transition-transform hover:scale-105">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm font-medium text-gray-500 uppercase">Avg. Value</p>
+                <p className="text-2xl font-bold text-blue-600">₹{formatCurrency(stats.averageValue || 0)}</p>
+              </div>
+              <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <FaChartLine className="h-6 w-6 text-blue-600" />
+              </div>
+            </div>
           </div>
         </div>
       )}
       
       {/* Filters and Search */}
       {showFilters && (
-        <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+        <div className="bg-white shadow-lg rounded-xl p-6 mb-8">
           <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
             {/* Search */}
             <div className="flex-grow">
               <form onSubmit={handleSearch}>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <FaSearch className="text-gray-400" />
                   </div>
                   <input
@@ -235,24 +299,24 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search contracts..."
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                    className="block w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-green-500 focus:border-green-500 transition-colors"
                   />
                 </div>
               </form>
             </div>
             
             {/* Status Filter */}
-            <div className="md:w-48">
+            <div className="md:w-64">
               <label htmlFor="status-filter" className="sr-only">Filter by Status</label>
-              <div className="flex items-center border border-gray-300 rounded-md">
-                <div className="px-3 py-2 bg-gray-50 text-gray-500 border-r border-gray-300">
-                  <FaFilter />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <FaFilter className="text-gray-400" />
                 </div>
                 <select
                   id="status-filter"
                   value={statusFilter}
                   onChange={(e) => handleStatusChange(e.target.value)}
-                  className="block w-full pl-3 pr-10 py-2 text-base border-0 focus:ring-0 focus:outline-none"
+                  className="block w-full pl-12 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-green-500 focus:border-green-500 appearance-none bg-white transition-colors"
                 >
                   <option value="all">All Statuses</option>
                   <option value="requested">Requested</option>
@@ -261,21 +325,24 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
                   <option value="completed">Completed</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                  <FaArrowDown className="w-4 h-4" />
+                </div>
               </div>
             </div>
             
             {/* Sort Options */}
-            <div className="md:w-48">
+            <div className="md:w-64">
               <label htmlFor="sort-by" className="sr-only">Sort by</label>
-              <div className="flex items-center border border-gray-300 rounded-md">
-                <div className="px-3 py-2 bg-gray-50 text-gray-500 border-r border-gray-300">
-                  <FaSort />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <FaSort className="text-gray-400" />
                 </div>
                 <select
                   id="sort-by"
                   value={sortBy}
                   onChange={(e) => handleSortChange(e.target.value)}
-                  className="block w-full pl-3 pr-10 py-2 text-base border-0 focus:ring-0 focus:outline-none"
+                  className="block w-full pl-12 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-green-500 focus:border-green-500 appearance-none bg-white transition-colors"
                 >
                   <option value="date">Date</option>
                   <option value="price">Price</option>
@@ -283,66 +350,207 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
                 </select>
                 <button
                   onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="px-3 py-2 text-gray-500 hover:text-gray-700"
-                  title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-auto"
                 >
-                  {sortOrder === 'asc' ? '↑' : '↓'}
+                  {sortOrder === 'asc' ? 
+                    <FaArrowUp className="w-4 h-4 text-green-600" /> : 
+                    <FaArrowDown className="w-4 h-4 text-green-600" />
+                  }
                 </button>
               </div>
             </div>
           </div>
+          
+          {/* Active filters display */}
+          {(searchQuery || statusFilter !== 'all') && (
+            <div className="mt-4 flex items-center flex-wrap gap-2">
+              <span className="text-sm text-gray-500">Active filters:</span>
+              
+              {searchQuery && (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                  <FaSearch className="mr-2 text-xs" />
+                  {searchQuery}
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="ml-2 text-blue-600 hover:text-blue-800"
+                  >
+                    <FaTimes className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              
+              {statusFilter !== 'all' && (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                  <FaFilter className="mr-2 text-xs" />
+                  Status: {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+                  <button 
+                    onClick={() => setStatusFilter('all')}
+                    className="ml-2 text-green-600 hover:text-green-800"
+                  >
+                    <FaTimes className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              
+              <button 
+                onClick={() => {
+                  setSearchQuery('');
+                  setStatusFilter('all');
+                }}
+                className="text-sm text-gray-500 underline hover:text-gray-700 ml-2"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
         </div>
       )}
       
       {/* Contracts List */}
       {contracts.length === 0 ? (
-        <EmptyState
-          title="No Contracts Found"
-          message={
-            searchQuery || statusFilter !== 'all' 
-              ? "No contracts match your current search criteria. Try adjusting your filters." 
-              : user?.role === 'farmer'
-                ? "You don't have any contracts yet. Once buyers make offers on your products, they'll appear here."
-                : "You don't have any contracts yet. Browse available products to make offers to farmers."
-          }
-          icon={<FaFileContract className="text-gray-400 w-12 h-12 mx-auto" />}
-          actionText={
-            searchQuery || statusFilter !== 'all' 
-              ? "Clear Filters" 
-              : user?.role === 'farmer' 
-                ? "Manage Products" 
-                : "Browse Products"
-          }
-          actionLink={
-            searchQuery || statusFilter !== 'all' 
-              ? "#" 
-              : user?.role === 'farmer' 
-                ? "/dashboard/products" 
-                : "/products"
-          }
-          onActionClick={
-            (searchQuery || statusFilter !== 'all') 
-              ? () => {
-                  setSearchQuery('');
-                  setStatusFilter('all');
-                  return false; // Prevent default navigation
-                }
-              : undefined
-          }
-        />
-      ) : (
-        <div className="bg-white shadow-md rounded-lg overflow-hidden">
-          <ContractSummaryList
-            title=""
-            initialContracts={contracts}
-            showFilters={false}
-            limit={limit * 2} // Allow more contracts to be shown in this view
-            showViewAll={false}
+        <div className="bg-white shadow-lg rounded-xl overflow-hidden">
+          <EmptyState
+            title="No Contracts Found"
+            message={
+              searchQuery || statusFilter !== 'all' 
+                ? "No contracts match your current search criteria. Try adjusting your filters." 
+                : user?.role === 'farmer'
+                  ? "You don't have any contracts yet. Once buyers make offers on your products, they'll appear here."
+                  : "You don't have any contracts yet. Browse available products to make offers to farmers."
+            }
+            icon={<FaFileContract className="text-gray-400 w-16 h-16 mx-auto" />}
+            actionText={
+              searchQuery || statusFilter !== 'all' 
+                ? "Clear Filters" 
+                : user?.role === 'farmer' 
+                  ? "Manage Products" 
+                  : "Browse Products"
+            }
+            actionLink={
+              searchQuery || statusFilter !== 'all' 
+                ? "#" 
+                : user?.role === 'farmer' 
+                  ? "/dashboard/products" 
+                  : "/products"
+            }
+            onActionClick={
+              (searchQuery || statusFilter !== 'all') 
+                ? () => {
+                    setSearchQuery('');
+                    setStatusFilter('all');
+                    return false; // Prevent default navigation
+                  }
+                : undefined
+            }
           />
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Custom contract cards instead of using ContractSummaryList */}
+          {contracts.map(contract => (
+            <div 
+              key={contract._id}
+              onClick={() => navigate(`/contracts/${contract._id}`)}
+              className="bg-white shadow-md hover:shadow-lg rounded-xl overflow-hidden transition-all cursor-pointer border border-gray-100 hover:border-green-500"
+            >
+              <div className="p-6">
+                <div className="flex flex-col md:flex-row gap-4 justify-between">
+                  {/* Left column - Contract info */}
+                  <div className="flex items-start space-x-4">
+                    {/* Status badge */}
+                    <div className="flex-shrink-0 mt-1">
+                      {getStatusBadge(contract.status)}
+                    </div>
+                    
+                    {/* Contract details */}
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">{contract.crop?.name}</h3>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center text-sm text-gray-600">
+                          <FaUserTie className="mr-2 text-gray-400" />
+                          <span>Farmer: {contract.farmer?.name}</span>
+                        </div>
+                        
+                        <div className="flex items-center text-sm text-gray-600">
+                          <FaLeaf className="mr-2 text-gray-400" />
+                          <span>Product: {contract.crop?.name}</span>
+                        </div>
+                        
+                        <div className="flex items-center text-sm text-gray-600">
+                          <FaCalendarAlt className="mr-2 text-gray-400" />
+                          <span>Created: {formatDate(contract.createdAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Right column - Price and details */}
+                  <div className="flex flex-col items-end justify-between">
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-green-600">₹{formatCurrency(contract.totalAmount)}</p>
+                      <p className="text-sm text-gray-500">{contract.quantity} {contract.unit}</p>
+                    </div>
+                    
+                    <button
+                      className="mt-4 inline-flex items-center text-sm font-medium text-green-600 hover:text-green-800"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/contracts/${contract._id}`);
+                      }}
+                    >
+                      View Details
+                      <svg 
+                        className="ml-2 w-5 h-5" 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        viewBox="0 0 20 20" 
+                        fill="currentColor"
+                      >
+                        <path 
+                          fillRule="evenodd" 
+                          d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" 
+                          clipRule="evenodd" 
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Contract progress bar */}
+              <div className="bg-gray-50 px-6 py-3">
+                <div className="flex items-center justify-between text-sm text-gray-600">
+                  <span>Contract Progress</span>
+                  <span className="font-medium">
+                    {contract.status === 'completed' ? '100%' : 
+                     contract.status === 'active' ? '50%' :
+                     contract.status === 'negotiating' ? '25%' :
+                     contract.status === 'requested' ? '10%' : '0%'}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1.5">
+                  <div 
+                    className={`h-2.5 rounded-full ${
+                      contract.status === 'completed' ? 'bg-blue-600' : 
+                      contract.status === 'active' ? 'bg-green-600' :
+                      contract.status === 'negotiating' ? 'bg-purple-600' :
+                      contract.status === 'requested' ? 'bg-amber-600' : 'bg-red-600'
+                    }`}
+                    style={{ 
+                      width: contract.status === 'completed' ? '100%' : 
+                             contract.status === 'active' ? '50%' :
+                             contract.status === 'negotiating' ? '25%' :
+                             contract.status === 'requested' ? '10%' : '0%'
+                    }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+          ))}
           
           {/* Pagination */}
           {showPagination && totalPages > 1 && (
-            <div className="p-4 border-t border-gray-200">
+            <div className="mt-8">
               <Pagination
                 currentPage={currentPage}
                 totalPages={totalPages}

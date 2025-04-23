@@ -322,11 +322,13 @@ exports.getAllProducts = catchAsyncErrors(async (req, res, next) => {
         certification,
         pesticidesUsed,
         openToCustomGrowing,
+        farmerState,
         page = 1, 
         limit = 10 
     } = req.query;
 
     const query = {};
+    let farmerQuery = {};  // Separate query for farmer filtering
 
     // Apply filters
     if (search) {
@@ -388,6 +390,40 @@ exports.getAllProducts = catchAsyncErrors(async (req, res, next) => {
     // Only show active products
     query.status = 'active';
 
+    // Handle state filter - we need to get farmer IDs whose location contains the state
+    if (farmerState) {
+        console.log("Filtering by farmer state:", farmerState);
+        try {
+            // First find farmers whose FarmLocation contains the state name
+            const User = require('../Model/User');
+            const farmersInState = await User.find({
+                FarmLocation: { $regex: farmerState, $options: 'i' }
+            }).select('_id');
+            
+            // Extract farmer IDs to use in main query
+            const farmerIds = farmersInState.map(farmer => farmer._id);
+            console.log(`Found ${farmerIds.length} farmers in state ${farmerState}`);
+            
+            // Add to main query
+            if (farmerIds.length > 0) {
+                query.farmer = { $in: farmerIds };
+            } else {
+                // If no farmers found in this state, return no results
+                console.log("No farmers found in state, returning empty results");
+                return res.status(200).json({
+                    success: true,
+                    products: [],
+                    total: 0,
+                    currentPage: Number(page),
+                    totalPages: 0
+                });
+            }
+        } catch (error) {
+            console.error("Error finding farmers by state:", error);
+            // Continue with other filters if this fails
+        }
+    }
+
     // Calculate pagination
     const skip = (page - 1) * limit;
 
@@ -395,7 +431,7 @@ exports.getAllProducts = catchAsyncErrors(async (req, res, next) => {
 
     // Build query
     let productsQuery = Product.find(query)
-        .populate('farmer', 'name email')
+        .populate('farmer', 'Name email contactNumber FarmLocation')
         .skip(skip)
         .limit(Number(limit));
 

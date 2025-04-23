@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { FaFilter, FaSeedling, FaChevronDown, FaChevronUp, FaLeaf, FaTint, FaCertificate, FaClock } from 'react-icons/fa';
+import { FaFilter, FaSeedling, FaChevronDown, FaChevronUp, FaLeaf, FaTint, FaCertificate, FaClock, FaMapMarkerAlt } from 'react-icons/fa';
+import { INDIAN_STATES } from '../../config/constants';
 
 const FilterSection = ({ 
   categories, 
@@ -23,6 +24,7 @@ const FilterSection = ({
     waterSource: false,
     certification: false,
     quantity: false,
+    state: false,
     sort: false
   });
 
@@ -404,6 +406,33 @@ const FilterSection = ({
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* State Filter - New Section */}
+        <div className="border-b pb-4">
+          <FilterSectionHeader 
+            title="State" 
+            expanded={expandedSections.state} 
+            toggleFn={() => toggleSection('state')} 
+            icon={<FaMapMarkerAlt className="text-red-600" />}
+          />
+          
+          {expandedSections.state && (
+            <div className="mt-2 pl-2">
+              <select
+                value={filters.state}
+                onChange={(e) => handleFilterChange('state', e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+              >
+                <option value="all">All states</option>
+                {INDIAN_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
         </div>

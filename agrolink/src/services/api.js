@@ -1,4 +1,3 @@
-
 // This file provides a unified API client with standardized error handling,
 // authentication token management, and consistent response formats.
 import axios from 'axios';
@@ -193,6 +192,11 @@ export const productAPI = {
     
     if (filters.maxQuantity !== undefined && filters.maxQuantity < 1000) {
       formattedFilters.maxQuantity = filters.maxQuantity;
+    }
+    
+    // Handle state filter for location-based filtering
+    if (filters.state && filters.state !== 'all') {
+      formattedFilters.farmerState = filters.state; // Pass as a query parameter to backend
     }
     
     console.log("Calling getAll products API with formatted filters:", formattedFilters);

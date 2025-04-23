@@ -7,6 +7,7 @@ import NoResults from './NoResults';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-hot-toast';
 import { FaFilter, FaTimes, FaSeedling, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { INDIAN_STATES, PRODUCT_CATEGORIES } from '../../config/constants';
 
 // Mock data for fallback when API fails
 const MOCK_PRODUCTS = [
@@ -153,6 +154,7 @@ const Shop = () => {
     farmingPractice: 'all',
     waterSource: 'all',
     certification: 'all',
+    state: 'all',
     sortBy: 'newest',
     organic: false,
     pesticidesUsed: null, // null = any, false = no pesticides only
@@ -259,6 +261,11 @@ const Shop = () => {
           filterParams.harvestWindow = filters.harvestWindow;
         }
         
+        // Add state filter if not 'all'
+        if (filters.state !== 'all') {
+          filterParams.state = filters.state;
+        }
+        
         console.log("Applying filters:", filterParams);
         
         // Fetch products with filters
@@ -304,6 +311,7 @@ const Shop = () => {
       farmingPractice: 'all',
       waterSource: 'all',
       certification: 'all',
+      state: 'all',
       sortBy: 'newest',
       organic: false,
       pesticidesUsed: null,
@@ -323,6 +331,89 @@ const Shop = () => {
     
     return differenceInDays >= 0 && differenceInDays <= parseInt(windowDays);
   };
+
+  // Extract state from FarmLocation
+  const extractStateFromLocation = (location) => {
+    if (!location) return '';
+    
+    // Convert location to lowercase for case-insensitive matching
+    const locationLower = location.toLowerCase();
+    
+    // Try to match a state from the location string
+    for (const state of INDIAN_STATES) {
+      // Check for exact state name in the location string (case insensitive)
+      if (locationLower.includes(state.toLowerCase())) {
+        return state;
+      }
+    }
+    
+    // If no direct match is found, try more sophisticated matching
+    // Look for common patterns in Indian addresses where state might appear
+    
+    // Pattern: Location usually ends with "state - pincode"
+    const stateWithPincodeRegex = /,\s*([^,]+)\s*-\s*\d{6}/i;
+    const stateWithPincodeMatch = location.match(stateWithPincodeRegex);
+    
+    if (stateWithPincodeMatch && stateWithPincodeMatch[1]) {
+      const potentialState = stateWithPincodeMatch[1].trim();
+      
+      // Check if this potential state matches any of our known states
+      const matchedState = INDIAN_STATES.find(state => 
+        potentialState.toLowerCase() === state.toLowerCase() ||
+        state.toLowerCase().includes(potentialState.toLowerCase()) ||
+        potentialState.toLowerCase().includes(state.toLowerCase())
+      );
+      
+      if (matchedState) return matchedState;
+    }
+    
+    // Pattern: Location often contains "city, state" near the end
+    const cityStateRegex = /,\s*[^,]+,\s*([^,\-]+)/i;
+    const cityStateMatch = location.match(cityStateRegex);
+    
+    if (cityStateMatch && cityStateMatch[1]) {
+      const potentialState = cityStateMatch[1].trim();
+      
+      // Check if this potential state matches any of our known states
+      const matchedState = INDIAN_STATES.find(state => 
+        potentialState.toLowerCase() === state.toLowerCase() ||
+        state.toLowerCase().includes(potentialState.toLowerCase()) ||
+        potentialState.toLowerCase().includes(state.toLowerCase())
+      );
+      
+      if (matchedState) return matchedState;
+    }
+    
+    return '';
+  };
+
+  // For display and debugging purposes
+  const getProductsStateDistribution = () => {
+    const stateCount = {};
+    
+    products.forEach(product => {
+      const farmerLocation = product.farmer?.FarmLocation || 
+                           product.farmLocation?.district || 
+                           product.farmLocation?.state || '';
+      
+      const state = extractStateFromLocation(farmerLocation);
+      if (state) {
+        stateCount[state] = (stateCount[state] || 0) + 1;
+      } else {
+        stateCount['Unknown'] = (stateCount['Unknown'] || 0) + 1;
+      }
+    });
+    
+    console.log('State distribution:', stateCount);
+    return stateCount;
+  };
+
+  // Call this function when products are loaded
+  useEffect(() => {
+    if (products.length > 0) {
+      getProductsStateDistribution();
+    }
+  }, [products]);
 
   // Filter products based on all criteria
   const filteredProducts = products.filter(product => {
@@ -355,6 +446,24 @@ const Shop = () => {
     
     // Custom growing filter
     if (filters.openToCustomGrowing === true && product.openToCustomGrowing !== true) return false;
+    
+    // State filter
+    if (filters.state !== 'all') {
+      // Get location from all possible sources in the product data
+      const farmerLocation = product.farmer?.FarmLocation || 
+                          product.farmLocation || 
+                          product.location || 
+                          (product.farmer ? product.farmer.location : '') || 
+                          '';
+      
+      // Extract state from location
+      const productState = extractStateFromLocation(farmerLocation);
+      
+      // If no state match is found or state doesn't match the filter, exclude product
+      if (!productState || productState !== filters.state) {
+        return false;
+      }
+    }
     
     // Search query filter
     if (searchQuery) {
@@ -412,6 +521,7 @@ const Shop = () => {
     if (filters.farmingPractice !== 'all') count++;
     if (filters.waterSource !== 'all') count++;
     if (filters.certification !== 'all') count++;
+    if (filters.state !== 'all') count++;
     if (filters.pesticidesUsed === false) count++;
     if (filters.openToCustomGrowing === true) count++;
     if (sortOption !== 'newest') count++;
@@ -420,6 +530,18 @@ const Shop = () => {
   };
 
   const activeFilterCount = getActiveFilterCount();
+
+  // Fix filters display in the active filters section
+  const displayStateFilter = () => {
+    if (filters.state !== 'all') {
+      return (
+        <span className="inline-flex items-center bg-orange-100 text-orange-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+          State: {filters.state}
+        </span>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="bg-gray-50 min-h-screen">
@@ -535,6 +657,11 @@ const Shop = () => {
                         {filters.farmingPractice !== 'all' && (
                           <span className="inline-flex items-center bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
                             {filters.farmingPractice}
+                          </span>
+                        )}
+                        {filters.state !== 'all' && (
+                          <span className="inline-flex items-center bg-orange-100 text-orange-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            State: {filters.state}
                           </span>
                         )}
                         {filters.pesticidesUsed === false && (
