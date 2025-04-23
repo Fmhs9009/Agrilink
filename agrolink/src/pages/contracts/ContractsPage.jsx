@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { Navigate } from 'react-router-dom';
-import ContractsList from '../../components/contract/ContractsList';
+import ContractsManager from '../../components/contract/ContractsManager';
 
 // Main container component
 const ContractsPage = () => {
@@ -12,8 +12,10 @@ const ContractsPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-10 px-4 sm:px-6 lg:px-8">
-      <ContractsList title="Manage Your Contract Farming Agreements" />
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <ContractsManager />
+      </div>
     </div>
   );
 };

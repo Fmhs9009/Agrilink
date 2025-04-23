@@ -451,8 +451,8 @@ const FilterSection = ({
               />
               <span className="ml-2 text-gray-700">Organic only</span>
             </label>
-            
-            <label className="inline-flex items-center cursor-pointer">
+            <br />
+            {/* <label className="inline-flex items-center cursor-pointer">
               <input 
                 type="checkbox" 
                 className="form-checkbox text-green-600 h-4 w-4"
@@ -460,7 +460,7 @@ const FilterSection = ({
                 onChange={(e) => handleFilterChange('pesticidesUsed', e.target.checked ? false : null)}
               />
               <span className="ml-2 text-gray-700">No pesticides used</span>
-            </label>
+            </label> */}
             
             <label className="inline-flex items-center cursor-pointer">
               <input 
