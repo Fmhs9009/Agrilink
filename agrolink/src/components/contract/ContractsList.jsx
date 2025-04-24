@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   FaFilter, FaSearch, FaSort, FaFileContract, FaExclamationTriangle, 
   FaChartLine, FaMoneyBillWave, FaHandshake, FaBalanceScale,
   FaArrowUp, FaArrowDown, FaCalendarAlt, FaCheckCircle, 
-  FaTimes, FaSpinner, FaHourglassHalf, FaUserTie, FaLeaf
+  FaTimes, FaSpinner, FaHourglassHalf, FaUserTie, FaLeaf, FaArrowRight
 } from 'react-icons/fa';
 import ContractSummaryList from './ContractSummaryList';
 import { contractAPI } from '../../services/api';
@@ -29,6 +29,7 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,6 +49,25 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
     if (page) setCurrentPage(parseInt(page, 10));
     if (search) setSearchQuery(search);
   }, [location]);
+  
+  // Debounce search input for better UX
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput !== searchQuery) {
+        setSearchQuery(searchInput);
+        setCurrentPage(1); // Reset to first page when search changes
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+  
+  // Initialize searchInput from URL on component mount
+  useEffect(() => {
+    if (searchQuery) {
+      setSearchInput(searchQuery);
+    }
+  }, []);
   
   // Fetch contracts when filter values change
   useEffect(() => {
@@ -78,14 +98,56 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
     navigate(newUrl, { replace: true });
   }, [statusFilter, sortBy, sortOrder, currentPage, searchQuery, navigate, location.pathname]);
   
+  // Convert frontend sort values to backend format
+  const mapSortToBackend = useCallback((sortType, order) => {
+    if (sortType === 'date') {
+      return order === 'asc' ? 'oldest' : 'newest';
+    } else if (sortType === 'price') {
+      return order === 'asc' ? 'amount-low' : 'amount-high';
+    } else if (sortType === 'status') {
+      // For status, we send the raw value and let backend handle it
+      return sortType;
+    } else {
+      return order === 'asc' ? 'oldest' : 'newest';
+    }
+  }, []);
+
   const fetchContracts = async () => {
     try {
       setLoading(true);
-      const response = await contractAPI.getAll();
+      
+      // Use the mapping function to get backend sort values
+      const backendSortBy = mapSortToBackend(sortBy, sortOrder);
+      
+      // Prepare filters for API call
+      const filters = {
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        page: currentPage,
+        limit: limit,
+        sortBy: backendSortBy
+      };
+      
+      // Only add search param if it's not empty to avoid unnecessary filtering
+      if (searchQuery && searchQuery.trim() !== '') {
+        filters.search = searchQuery.trim();
+      }
+      
+      // Call API with filters
+      console.log("Fetching contracts with filters:", filters);
+      const response = await contractAPI.getByBuyer(filters);
+      console.log("Contracts response:", response);
       
       if (response.success) {
         const contractsData = response.contracts || [];
         setContracts(contractsData);
+        
+        // Set total pages for pagination
+        if (response.totalPages) {
+          setTotalPages(response.totalPages);
+        } else if (response.total) {
+          // Backend returns 'total' rather than 'totalContracts'
+          setTotalPages(Math.ceil(response.total / limit));
+        }
         
         // Calculate stats excluding cancelled contracts
         const nonCancelledContracts = contractsData.filter(c => c.status !== 'cancelled');
@@ -97,7 +159,7 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
           : 0;
         
         setStats({
-          total: contractsData.length,
+          total: response.total || contractsData.length,
           byStatus: {
             active: activeContracts.length,
             pending: contractsData.filter(c => c.status === 'pending').length,
@@ -107,10 +169,19 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
           totalValue,
           averageValue
         });
+        
+        // If search returned no results, show feedback
+        if (searchQuery && contractsData.length === 0) {
+          console.log("Search returned no results for:", searchQuery);
+        }
+      } else {
+        setError(response.message || 'Failed to load contracts');
+        toast.error(response.message || 'Failed to load contracts');
       }
     } catch (error) {
       console.error('Error fetching contracts:', error);
       setError('Failed to load contracts');
+      toast.error('Failed to load contracts. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -153,9 +224,30 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   
-  const handleSearch = (e) => {
+  const handleSearchInputChange = (e) => {
+    setSearchInput(e.target.value);
+  };
+  
+  const handleSearchSubmit = (e) => {
     e.preventDefault();
+    setSearchQuery(searchInput);
     setCurrentPage(1); // Reset to first page when search changes
+  };
+  
+  const handleClearSearch = () => {
+    setSearchInput('');
+    setSearchQuery('');
+    setCurrentPage(1);
+  };
+
+  // Clear all filters
+  const handleClearAllFilters = () => {
+    setSearchInput('');
+    setSearchQuery('');
+    setStatusFilter('all');
+    setSortBy('date');
+    setSortOrder('desc');
+    setCurrentPage(1);
   };
 
   // Status badge styling
@@ -289,18 +381,33 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
           <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
             {/* Search */}
             <div className="flex-grow">
-              <form onSubmit={handleSearch}>
+              <form onSubmit={handleSearchSubmit}>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <FaSearch className="text-gray-400" />
                   </div>
                   <input
                     type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search contracts..."
-                    className="block w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-green-500 focus:border-green-500 transition-colors"
+                    value={searchInput}
+                    onChange={handleSearchInputChange}
+                    placeholder="Search by product name..."
+                    className="block w-full pl-12 pr-12 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-green-500 focus:border-green-500 transition-colors"
                   />
+                  {searchInput && (
+                    <button
+                      type="button"
+                      onClick={handleClearSearch}
+                      className="absolute inset-y-0 right-12 flex items-center pr-2"
+                    >
+                      <FaTimes className="h-4 w-4 text-gray-400 hover:text-gray-600" />
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  >
+                    <FaArrowRight className="h-5 w-5 text-green-500 hover:text-green-700" />
+                  </button>
                 </div>
               </form>
             </div>
@@ -310,13 +417,13 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
               <label htmlFor="status-filter" className="sr-only">Filter by Status</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <FaFilter className="text-gray-400" />
+                  <FaFilter className={`${statusFilter !== 'all' ? 'text-green-500' : 'text-gray-400'}`} />
                 </div>
                 <select
                   id="status-filter"
                   value={statusFilter}
                   onChange={(e) => handleStatusChange(e.target.value)}
-                  className="block w-full pl-12 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-green-500 focus:border-green-500 appearance-none bg-white transition-colors"
+                  className={`block w-full pl-12 pr-10 py-3 border ${statusFilter !== 'all' ? 'border-green-300 bg-green-50' : 'border-gray-300'} rounded-xl shadow-sm focus:ring-green-500 focus:border-green-500 appearance-none bg-white transition-colors`}
                 >
                   <option value="all">All Statuses</option>
                   <option value="requested">Requested</option>
@@ -336,16 +443,16 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
               <label htmlFor="sort-by" className="sr-only">Sort by</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <FaSort className="text-gray-400" />
+                  <FaSort className={`${sortBy !== 'date' || sortOrder !== 'desc' ? 'text-green-500' : 'text-gray-400'}`} />
                 </div>
                 <select
                   id="sort-by"
                   value={sortBy}
                   onChange={(e) => handleSortChange(e.target.value)}
-                  className="block w-full pl-12 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-green-500 focus:border-green-500 appearance-none bg-white transition-colors"
+                  className={`block w-full pl-12 pr-10 py-3 border ${sortBy !== 'date' || sortOrder !== 'desc' ? 'border-green-300 bg-green-50' : 'border-gray-300'} rounded-xl shadow-sm focus:ring-green-500 focus:border-green-500 appearance-none bg-white transition-colors`}
                 >
-                  <option value="date">Date</option>
-                  <option value="price">Price</option>
+                  <option value="date">Date {sortBy === 'date' && (sortOrder === 'desc' ? '(Latest)' : '(Oldest)')}</option>
+                  <option value="price">Price {sortBy === 'price' && (sortOrder === 'desc' ? '(Highest)' : '(Lowest)')}</option>
                   <option value="status">Status</option>
                 </select>
                 <button
@@ -362,16 +469,16 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
           </div>
           
           {/* Active filters display */}
-          {(searchQuery || statusFilter !== 'all') && (
+          {(searchQuery || statusFilter !== 'all' || sortBy !== 'date' || sortOrder !== 'desc') && (
             <div className="mt-4 flex items-center flex-wrap gap-2">
               <span className="text-sm text-gray-500">Active filters:</span>
               
               {searchQuery && (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
                   <FaSearch className="mr-2 text-xs" />
-                  {searchQuery}
+                  Product: {searchQuery}
                   <button 
-                    onClick={() => setSearchQuery('')}
+                    onClick={handleClearSearch}
                     className="ml-2 text-blue-600 hover:text-blue-800"
                   >
                     <FaTimes className="w-3 h-3" />
@@ -392,11 +499,24 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
                 </span>
               )}
               
+              {(sortBy !== 'date' || sortOrder !== 'desc') && (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+                  <FaSort className="mr-2 text-xs" />
+                  Sort: {sortBy.charAt(0).toUpperCase() + sortBy.slice(1)} {sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                  <button 
+                    onClick={() => {
+                      setSortBy('date');
+                      setSortOrder('desc');
+                    }}
+                    className="ml-2 text-purple-600 hover:text-purple-800"
+                  >
+                    <FaTimes className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              
               <button 
-                onClick={() => {
-                  setSearchQuery('');
-                  setStatusFilter('all');
-                }}
+                onClick={handleClearAllFilters}
                 className="text-sm text-gray-500 underline hover:text-gray-700 ml-2"
               >
                 Clear all
@@ -410,13 +530,21 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
       {contracts.length === 0 ? (
         <div className="bg-white shadow-lg rounded-xl overflow-hidden">
           <EmptyState
-            title="No Contracts Found"
-            message={
+            title={
               searchQuery || statusFilter !== 'all' 
-                ? "No contracts match your current search criteria. Try adjusting your filters." 
-                : user?.role === 'farmer'
-                  ? "You don't have any contracts yet. Once buyers make offers on your products, they'll appear here."
-                  : "You don't have any contracts yet. Browse available products to make offers to farmers."
+                ? "No Matching Contracts Found" 
+                : "No Contracts Found"
+            }
+            message={
+              searchQuery && statusFilter !== 'all'
+                ? `No contracts found with product "${searchQuery}" and status "${statusFilter}". Try adjusting your filters.`
+                : searchQuery 
+                  ? `No contracts found with product "${searchQuery}". Try a different product name.`
+                  : statusFilter !== 'all'
+                    ? `No contracts with status "${statusFilter}" found. Try a different status filter.`
+                    : user?.role === 'farmer'
+                      ? "You don't have any contracts yet. Once buyers make offers on your products, they'll appear here."
+                      : "You don't have any contracts yet. Browse available products to make offers to farmers."
             }
             icon={<FaFileContract className="text-gray-400 w-16 h-16 mx-auto" />}
             actionText={
@@ -436,8 +564,7 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
             onActionClick={
               (searchQuery || statusFilter !== 'all') 
                 ? () => {
-                    setSearchQuery('');
-                    setStatusFilter('all');
+                    handleClearAllFilters();
                     return false; // Prevent default navigation
                   }
                 : undefined
@@ -554,8 +681,15 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
               <Pagination
                 currentPage={currentPage}
                 totalPages={totalPages}
-                onPageChange={handlePageChange}
+                onPageChange={(page) => {
+                  // Update the page and scroll to top
+                  setCurrentPage(page);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
               />
+              <div className="text-center text-sm text-gray-500 mt-2">
+                Showing page {currentPage} of {totalPages}
+              </div>
             </div>
           )}
         </div>

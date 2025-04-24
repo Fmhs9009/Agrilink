@@ -576,7 +576,6 @@ exports.getContracts = async (req, res) => {
         const userId = req.user.id;
         const userRole = req.user.accountType;
         
-     //   console.log(userId,"sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss");
         let query = {};
         
         // Filter contracts based on user role
@@ -589,7 +588,7 @@ exports.getContracts = async (req, res) => {
         }
         
         // Apply filters if provided
-        const { status, sortBy, limit = 10, page = 1 } = req.query;
+        const { status, sortBy, limit = 10, page = 1, search, keyword, query: searchQuery } = req.query;
         
         if (status) {
             query.status = status;
@@ -613,25 +612,41 @@ exports.getContracts = async (req, res) => {
         // Calculate pagination
         const skip = (parseInt(page) - 1) * parseInt(limit);
         
-        // Fetch contracts with populated references
-        const contracts = await Contract.find(query)
+        // First, fetch all contracts for this user to populate and search
+        const allUserContracts = await Contract.find(query)
             .populate('crop', 'name images price unit category')
             .populate('farmer', 'name email phone location')
             .populate('buyer', 'name email phone')
-            .sort(sort)
-            .skip(skip)
-            .limit(parseInt(limit));
-        
+            .sort(sort);
+         
         // Get total count for pagination
-        const totalContracts = await Contract.countDocuments(query);
-        console.log(contracts,"contracts");
+        const totalContracts = allUserContracts.length;
+            
+        // Simplified search: Only search by crop name
+        const searchTerm = search || keyword || searchQuery;
+        let filteredContracts = allUserContracts;
+        
+        if (searchTerm && searchTerm.trim() !== '') {
+            const regex = new RegExp(searchTerm, 'i');
+            filteredContracts = allUserContracts.filter(contract => 
+                contract.crop && contract.crop.name && regex.test(contract.crop.name)
+            );
+        }
+        
+        // Calculate pagination based on filtered results
+        const totalFilteredContracts = filteredContracts.length;
+        const totalPages = Math.ceil(totalFilteredContracts / parseInt(limit));
+        
+        // Apply pagination to filtered results
+        const paginatedContracts = filteredContracts.slice(skip, skip + parseInt(limit));
+        
         return res.status(200).json({
             success: true,
-            count: contracts.length,
-            total: totalContracts,
-            totalPages: Math.ceil(totalContracts / parseInt(limit)),
+            count: paginatedContracts.length,
+            total: totalFilteredContracts,
+            totalPages: totalPages,
             currentPage: parseInt(page),
-            contracts
+            contracts: paginatedContracts
         });
     } catch (error) {
         console.error('Error fetching contracts:', error);

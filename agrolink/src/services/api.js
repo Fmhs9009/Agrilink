@@ -717,8 +717,23 @@ export const contractAPI = {
   },
 
   // Get buyer's contracts
-  getByBuyer: async (buyerId) => {
-    return handleApiResponse(() => api.get(`/contracts/user/all`));
+  getByBuyer: async (filters = {}) => {
+    // Prepare query parameters for filtering, sorting, and pagination
+    const queryParams = new URLSearchParams();
+    
+    // Add all provided filters to the query parameters
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        console.log(`Adding filter: ${key}=${value}`);
+        queryParams.append(key, value);
+      }
+    });
+    
+    const queryString = queryParams.toString();
+    const endpoint = `/contracts/user/all${queryString ? `?${queryString}` : ''}`;
+    
+    console.log(`Calling API endpoint: ${endpoint}`);
+    return handleApiResponse(() => api.get(endpoint));
   },
   
   // Update contract status (accept, reject, negotiate)
