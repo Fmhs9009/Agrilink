@@ -736,6 +736,17 @@ export const contractAPI = {
     return handleApiResponse(() => api.get(endpoint));
   },
   
+  // Get all buyer's contracts without pagination (for dashboard)
+  getAllUserContracts: async () => {
+    // Use a very high limit to get all contracts in one request
+    const queryParams = new URLSearchParams();
+    queryParams.append('limit', 1000); // Set a high limit to get all contracts
+    
+    const endpoint = `/contracts/user/all?${queryParams.toString()}`;
+    console.log(`Calling API to get all contracts: ${endpoint}`);
+    return handleApiResponse(() => api.get(endpoint));
+  },
+  
   // Update contract status (accept, reject, negotiate)
   updateContractStatus: async (id, statusData) => {
     console.log("Updating contract status for ID:", id, "with data:", statusData);

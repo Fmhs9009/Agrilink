@@ -140,7 +140,12 @@ const ContractStatusChart = ({ stats, contracts }) => {
 
   // Calculate status counts from actual contracts
   const statusCounts = contracts.reduce((acc, contract) => {
-    acc[contract.status] = (acc[contract.status] || 0) + 1;
+    // Group 'pending' and 'requested' together
+    if (contract.status === 'pending' || contract.status === 'requested') {
+      acc['requested'] = (acc['requested'] || 0) + 1;
+    } else {
+      acc[contract.status] = (acc[contract.status] || 0) + 1;
+    }
     return acc;
   }, {});
 
@@ -162,6 +167,15 @@ const ContractStatusChart = ({ stats, contracts }) => {
       bgColor: 'bg-purple-100', 
       icon: <FaExchangeAlt />, 
       count: statusCounts.negotiating || 0 
+    },
+    { 
+      id: 'payment_pending', 
+      label: 'Payment Pending', 
+      color: 'bg-amber-500', 
+      textColor: 'text-amber-700', 
+      bgColor: 'bg-amber-100', 
+      icon: <FaMoneyBillWave />, 
+      count: statusCounts.payment_pending || 0 
     },
     { 
       id: 'active', 
@@ -192,7 +206,36 @@ const ContractStatusChart = ({ stats, contracts }) => {
     }
   ];
 
-  const total = statuses.reduce((sum, status) => sum + status.count, 0);
+  // Check for any unexpected statuses not included in our statuses array
+  const accounted = new Set(statuses.map(s => s.id).concat(['pending'])); // 'pending' is merged with 'requested'
+  const unexpectedStatuses = [];
+  
+  for (const contract of contracts) {
+    if (!accounted.has(contract.status)) {
+      unexpectedStatuses.push(contract.status);
+      console.warn(`Unexpected contract status: ${contract.status}`);
+    }
+  }
+  
+  // Add an "Other" category if needed
+  if (unexpectedStatuses.length > 0) {
+    const otherCount = unexpectedStatuses.reduce((count, status) => 
+      count + (statusCounts[status] || 0), 0);
+    
+    if (otherCount > 0) {
+      statuses.push({
+        id: 'other',
+        label: 'Other',
+        color: 'bg-gray-500',
+        textColor: 'text-gray-700',
+        bgColor: 'bg-gray-100',
+        icon: <FaInfoCircle />,
+        count: otherCount
+      });
+    }
+  }
+
+  const total = contracts.length;
   
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -204,17 +247,19 @@ const ContractStatusChart = ({ stats, contracts }) => {
       </div>
       
       <div className="flex w-full h-8 rounded-full overflow-hidden mb-6 shadow-inner bg-gray-100">
-        {statuses.map(status => (
-          <div 
-            key={status.id} 
-            className={`${status.color} transition-all duration-500 ease-in-out ${status.count > 0 ? '' : 'hidden'}`} 
-            style={{ width: `${(status.count / total) * 100}%` }}
-            title={`${status.label}: ${status.count} (${Math.round((status.count / total) * 100)}%)`}
-          />
-        ))}
+        {statuses
+          .filter(status => status.count > 0)
+          .map(status => (
+            <div 
+              key={status.id} 
+              className={`${status.color} transition-all duration-500 ease-in-out`} 
+              style={{ width: `${(status.count / total) * 100}%` }}
+              title={`${status.label}: ${status.count} (${Math.round((status.count / total) * 100)}%)`}
+            />
+          ))}
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {statuses.map(status => (
           <Link
             key={status.id} 
@@ -228,7 +273,7 @@ const ContractStatusChart = ({ stats, contracts }) => {
               <div className="text-xs text-gray-600">{status.label}</div>
               <div className="font-bold text-lg text-gray-800">{status.count}</div>
               <div className="text-xs text-gray-500">
-                {Math.round((status.count / total) * 100)}%
+                {total > 0 ? Math.round((status.count / total) * 100) : 0}%
               </div>
             </div>
           </Link>
@@ -240,26 +285,19 @@ const ContractStatusChart = ({ stats, contracts }) => {
 
 // Recent contracts component with timeline-like UI
 const RecentContracts = ({ contracts }) => {
-  const recentContracts = contracts?.slice(0, 3) || [];
-  
-  if (recentContracts.length === 0) {
+  if (!contracts || contracts.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-medium text-gray-800">Recent Purchases</h2>
-          <Link to="/contracts" className="text-green-600 hover:text-green-800 text-sm font-medium">
-            View All
-          </Link>
-        </div>
-        <div className="flex flex-col items-center justify-center py-10 bg-gray-50 rounded-lg">
-          <div className="p-4 bg-gray-100 rounded-full mb-3">
-            <FaFileContract className="text-gray-400 text-4xl" />
+        <h2 className="text-lg font-medium text-gray-800 mb-4">Recent Contracts</h2>
+        <div className="text-center py-8 bg-gray-50 rounded-lg">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 mb-3">
+            <FaHandshake className="h-6 w-6 text-gray-400" />
           </div>
-          <p className="text-gray-600 font-medium mb-2">No Active Contracts Yet</p>
-          <p className="text-gray-500 text-sm mb-6 max-w-md text-center">Start your contract farming journey by browsing available produce and making offers to farmers.</p>
+          <p className="text-gray-500 mb-1">No contracts yet</p>
+          <p className="text-xs text-gray-400 mb-4">Start securing your farm produce needs</p>
           <Link 
-            to="/shop" 
-            className="inline-flex items-center px-5 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none transition-colors"
+            to="/shop"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
           >
             <FaStore className="mr-2" />
             Browse Farm Products
@@ -268,41 +306,49 @@ const RecentContracts = ({ contracts }) => {
       </div>
     );
   }
+
+  // Filter to most recent 5 contracts
+  const recentContracts = [...contracts]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 5);
+
+  // Helper functions for status colors and icons
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'requested': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'negotiating': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'active': return 'bg-green-100 text-green-800 border-green-200';
+      case 'completed': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
   
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'requested': return <FaClipboardCheck />;
+      case 'negotiating': return <FaExchangeAlt />;
+      case 'active': return <FaHandshake />;
+      case 'completed': return <FaCheck />;
+      case 'cancelled': return <FaTimes />;
+      default: return <FaClipboardCheck />;
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mb-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-medium text-gray-800">Recent Contracts</h2>
-        <Link to="/contracts" className="text-green-600 hover:text-green-800 text-sm font-medium flex items-center">
-          View All <FaArrowRight className="ml-1 text-xs" />
+        <Link
+          to="/contracts"
+          className="text-green-600 hover:text-green-800 text-sm font-medium flex items-center"
+        >
+          Manage all contracts <FaArrowRight className="ml-1 h-3 w-3" />
         </Link>
       </div>
       
       <div className="space-y-4">
-        {recentContracts.map((contract, index) => {
-          // Status style mapping
-          const getStatusColor = (status) => {
-            switch (status) {
-              case 'requested': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-              case 'negotiating': return 'bg-purple-100 text-purple-800 border-purple-200';
-              case 'active': return 'bg-green-100 text-green-800 border-green-200';
-              case 'completed': return 'bg-blue-100 text-blue-800 border-blue-200';
-              case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
-              default: return 'bg-gray-100 text-gray-800 border-gray-200';
-            }
-          };
-          
-          const getStatusIcon = (status) => {
-            switch (status) {
-              case 'requested': return <FaClipboardCheck />;
-              case 'negotiating': return <FaExchangeAlt />;
-              case 'active': return <FaHandshake />;
-              case 'completed': return <FaCheck />;
-              case 'cancelled': return <FaTimes />;
-              default: return <FaClipboardCheck />;
-            }
-          };
-          
+        {recentContracts.map((contract) => {
           const statusClass = getStatusColor(contract.status);
           const statusIcon = getStatusIcon(contract.status);
           
@@ -382,91 +428,110 @@ const RecentContracts = ({ contracts }) => {
 const InvestmentBreakdown = ({ contracts }) => {
   if (!contracts || contracts.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h2 className="text-lg font-medium text-gray-800 mb-4">Investment Portfolio</h2>
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-medium text-gray-800">Investment Breakdown</h2>
+        </div>
         <div className="text-center py-8 bg-gray-50 rounded-lg">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 mb-3">
-            <FaMoneyBillWave className="h-6 w-6 text-gray-400" />
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-100 mb-3">
+            <FaMoneyBillWave className="h-6 w-6 text-green-600" />
           </div>
-          <p className="text-gray-500 mb-1">No investments yet</p>
-          <p className="text-xs text-gray-400">Start by creating your first contract</p>
+          <p className="text-gray-500 mb-1">No investment data available</p>
+          <p className="text-xs text-gray-400">Create contracts to track your investments</p>
         </div>
       </div>
     );
   }
 
-  // Calculate investment breakdown by crop category - exclude cancelled contracts
-  const investmentByCategory = contracts
-    .filter(contract => contract.status !== 'cancelled')
-    .reduce((acc, contract) => {
-      const category = contract.crop?.category || 'Other';
-      acc[category] = (acc[category] || 0) + (contract.totalAmount || 0);
-      return acc;
-    }, {});
-
-  // Define categories with their colors and icons
-  const categories = [
+  // Filter out cancelled contracts
+  const validContracts = contracts.filter(c => c.status !== 'cancelled');
+  
+  // Categorize contracts by status
+  const activeInvestment = validContracts
+    .filter(c => c.status === 'active')
+    .reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+    
+  const pendingInvestment = validContracts
+    .filter(c => c.status === 'payment_pending' || c.status === 'negotiating' || 
+                c.status === 'pending' || c.status === 'requested')
+    .reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+    
+  const completedInvestment = validContracts
+    .filter(c => c.status === 'completed')
+    .reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+    
+  // Calculate any other contracts not in the above categories
+  const otherInvestment = validContracts
+    .filter(c => !['active', 'payment_pending', 'negotiating', 'pending', 'requested', 'completed', 'cancelled'].includes(c.status))
+    .reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+  
+  // Double-check total to ensure all contracts are accounted for
+  const calculatedTotal = activeInvestment + pendingInvestment + completedInvestment + otherInvestment;
+  const actualTotal = validContracts.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+  
+  if (Math.abs(calculatedTotal - actualTotal) > 0.01) {
+    console.warn(`Investment breakdown mismatch: calculated ${calculatedTotal}, actual ${actualTotal}`);
+  }
+  
+  const total = actualTotal; // Use the actual total to avoid rounding errors
+  
+  // Prepare data for display
+  const investments = [
     { 
-      name: "Grains", 
-      color: "bg-yellow-500", 
-      icon: <FaSeedling />,
-      value: investmentByCategory['Grains'] || 0
+      id: 'active', 
+      label: 'Active Contracts', 
+      color: 'bg-green-500',
+      percent: total ? (activeInvestment / total) * 100 : 0,
+      amount: activeInvestment
     },
     { 
-      name: "Vegetables", 
-      color: "bg-green-500", 
-      icon: <FaLeaf />,
-      value: investmentByCategory['Vegetables'] || 0
+      id: 'pending', 
+      label: 'Pending Approval', 
+      color: 'bg-yellow-500',
+      percent: total ? (pendingInvestment / total) * 100 : 0,
+      amount: pendingInvestment
     },
     { 
-      name: "Fruits", 
-      color: "bg-red-500", 
-      icon: <FaAppleAlt />,
-      value: investmentByCategory['Fruits'] || 0
-    },
-    { 
-      name: "Other", 
-      color: "bg-blue-500", 
-      icon: <FaWater />,
-      value: investmentByCategory['Other'] || 0
+      id: 'completed', 
+      label: 'Completed', 
+      color: 'bg-blue-500',
+      percent: total ? (completedInvestment / total) * 100 : 0,
+      amount: completedInvestment
     }
   ];
-
-  const total = categories.reduce((sum, category) => sum + category.value, 0);
   
+  // Only add "Other" category if there are any such contracts
+  if (otherInvestment > 0) {
+    investments.push({
+      id: 'other',
+      label: 'Other',
+      color: 'bg-gray-500',
+      percent: total ? (otherInvestment / total) * 100 : 0,
+      amount: otherInvestment
+    });
+  }
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-      <h2 className="text-lg font-medium text-gray-800 mb-4">Investment Portfolio</h2>
-      
-      <div className="flex w-full h-10 rounded-lg overflow-hidden mb-6 shadow-inner">
-        {categories.map((category, index) => (
-          <div 
-            key={index} 
-            className={`${category.color} relative group cursor-pointer transition-all duration-500 ease-in-out`} 
-            style={{ 
-              width: `${(category.value / total) * 100}%`,
-              animation: `grow-${index} 1s ease-out`
-            }}
-          >
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20">
-              <span className="text-white text-xs font-medium">{Math.round((category.value / total) * 100)}%</span>
-            </div>
-          </div>
-        ))}
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-medium text-gray-800">Investment Breakdown</h2>
       </div>
       
       <div className="space-y-4">
-        {categories.map((category, index) => (
-          <div key={index} className="flex items-center justify-between hover:bg-gray-50 p-2 rounded-lg transition-colors">
-            <div className="flex items-center">
-              <div className={`w-8 h-8 ${category.color} rounded-lg flex items-center justify-center text-white mr-3`}>
-                {category.icon}
-              </div>
-              <span className="text-sm font-medium text-gray-700">{category.name}</span>
+        {investments.map(item => (
+          <div key={item.id} className="relative">
+            <div className="flex justify-between text-sm mb-1">
+              <span className="font-medium text-gray-700">{item.label}</span>
+              <span className="text-gray-600">₹{formatCurrency(item.amount)}</span>
             </div>
-            <div className="text-right">
-              <span className="text-sm font-semibold text-gray-900">₹{formatCurrency(category.value)}</span>
-              <div className="text-xs text-gray-500">({Math.round((category.value / total) * 100)}%)</div>
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div 
+                className={`h-2.5 rounded-full ${item.color}`} 
+                style={{ width: `${item.percent}%` }}
+              ></div>
+            </div>
+            <div className="text-xs text-right mt-1 text-gray-500">
+              {item.percent.toFixed(1)}%
             </div>
           </div>
         ))}
@@ -641,17 +706,38 @@ const CustomerDashboard = () => {
         
         // Fetch contracts
         try {
-          if (!user || !user._id) {
-            console.warn('User ID is missing, cannot fetch contracts');
-            setContracts([]);
-          } else {
-            const contractsResponse = await contractAPI.getByBuyer(user._id);
+          if (user && user._id) {
+            const contractsResponse = await contractAPI.getAllUserContracts();
             if (contractsResponse.success) {
               const contractsData = contractsResponse.contracts || [];
               setContracts(contractsData);
               
               // Calculate dashboard stats
               const activeContracts = contractsData.filter(c => c.status === 'active');
+              const pendingContracts = contractsData.filter(c => 
+                c.status === 'pending' || c.status === 'requested');
+              const negotiatingContracts = contractsData.filter(c => c.status === 'negotiating');
+              const paymentPendingContracts = contractsData.filter(c => c.status === 'payment_pending');
+              const completedContracts = contractsData.filter(c => c.status === 'completed');
+              const cancelledContracts = contractsData.filter(c => c.status === 'cancelled');
+              
+              // Verify that all contracts are accounted for
+              const countedContracts = activeContracts.length + pendingContracts.length + 
+                                       negotiatingContracts.length + paymentPendingContracts.length + 
+                                       completedContracts.length + cancelledContracts.length;
+              
+              if (countedContracts !== contractsData.length) {
+                console.warn(`Contract status count mismatch: counted ${countedContracts}, total ${contractsData.length}`);
+                
+                // Find contracts with unexpected statuses
+                const accounted = new Set(['active', 'pending', 'requested', 'negotiating', 'payment_pending', 'completed', 'cancelled']);
+                const unexpectedStatuses = contractsData
+                  .filter(c => !accounted.has(c.status))
+                  .map(c => c.status);
+                  
+                console.warn('Unexpected statuses:', [...new Set(unexpectedStatuses)]);
+              }
+              
               const upcomingHarvests = activeContracts.filter(c => {
                 if (!c.expectedHarvestDate) return false;
                 const harvestDate = new Date(c.expectedHarvestDate);
@@ -669,8 +755,12 @@ const CustomerDashboard = () => {
                   .reduce((sum, c) => sum + (c.totalAmount || 0), 0)
               }));
             } else {
+              console.warn('Failed to fetch contracts:', contractsResponse.message);
               setContracts([]);
             }
+          } else {
+            console.warn('User ID is missing, cannot fetch contracts');
+            setContracts([]);
           }
         } catch (contractError) {
           console.error('Error fetching contracts:', contractError);
@@ -707,9 +797,7 @@ const CustomerDashboard = () => {
       }
     };
 
-    if (user && user._id) {
-      fetchDashboardData();
-    }
+    fetchDashboardData();
   }, [user]);
 
   if (loading) {
@@ -816,8 +904,8 @@ const CustomerDashboard = () => {
         
         <ContractSummaryList 
           title=""
-          initialContracts={contracts.slice(0, 5)}
-          limit={5}
+          initialContracts={contracts}
+          limit={contracts.length}
           showFilters={false}
           showViewAll={true}
           userRole="customer"

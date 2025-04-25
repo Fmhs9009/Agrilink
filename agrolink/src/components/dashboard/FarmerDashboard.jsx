@@ -653,37 +653,71 @@ const ContractStatusChart = ({ contracts }) => {
     active: contracts.filter(c => c.status === 'active').length,
     completed: contracts.filter(c => c.status === 'completed').length,
     cancelled: contracts.filter(c => c.status === 'cancelled').length,
-    negotiating: contracts.filter(c => c.status === 'negotiating').length
+    negotiating: contracts.filter(c => c.status === 'negotiating').length,
+    payment_pending: contracts.filter(c => c.status === 'payment_pending').length,
+    harvested: contracts.filter(c => c.status === 'harvested').length,
+    delivered: contracts.filter(c => c.status === 'delivered').length,
+    readyForHarvest: contracts.filter(c => c.status === 'readyForHarvest').length,
+    disputed: contracts.filter(c => c.status === 'disputed').length
   };
+
+  // Filter out statuses with zero count to avoid cluttering the chart
+  const filteredStatusCounts = Object.entries(statusCounts)
+    .filter(([_, count]) => count > 0)
+    .reduce((acc, [status, count]) => ({ ...acc, [status]: count }), {});
 
   const totalContracts = Object.values(statusCounts).reduce((sum, count) => sum + count, 0);
 
-  // Prepare data for the chart
+  // Prepare data for the chart - include only non-zero statuses
+  const statusLabels = {
+    pending: 'Pending/Requested',
+    active: 'Active',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+    negotiating: 'Negotiating',
+    payment_pending: 'Payment Pending',
+    harvested: 'Harvested',
+    delivered: 'Delivered',
+    readyForHarvest: 'Ready for Harvest',
+    disputed: 'Disputed'
+  };
+
+  const statusColors = {
+    pending: { bg: '#FCD34D', border: '#FBBF24' },         // yellow-400/500
+    active: { bg: '#34D399', border: '#10B981' },          // green-400/500
+    completed: { bg: '#60A5FA', border: '#3B82F6' },       // blue-400/500
+    cancelled: { bg: '#F87171', border: '#EF4444' },       // red-400/500
+    negotiating: { bg: '#A78BFA', border: '#8B5CF6' },     // purple-400/500
+    payment_pending: { bg: '#FDBA74', border: '#FB923C' }, // orange-300/400
+    harvested: { bg: '#86EFAC', border: '#4ADE80' },       // green-300/400
+    delivered: { bg: '#93C5FD', border: '#60A5FA' },       // blue-300/400
+    readyForHarvest: { bg: '#C4B5FD', border: '#A78BFA' }, // purple-300/400
+    disputed: { bg: '#FCA5A5', border: '#F87171' }         // red-300/400
+  };
+
+  // Create arrays for chart data
+  const labels = [];
+  const data = [];
+  const backgroundColor = [];
+  const borderColor = [];
+  
+  // Add data for statuses with non-zero counts
+  Object.entries(filteredStatusCounts).forEach(([status, count]) => {
+    if (count > 0) {
+      labels.push(statusLabels[status]);
+      data.push(count);
+      backgroundColor.push(statusColors[status].bg);
+      borderColor.push(statusColors[status].border);
+    }
+  });
+
   const chartData = {
-    labels: ['Pending', 'Active', 'Completed', 'Cancelled', 'Negotiating'],
+    labels,
     datasets: [
       {
-        data: [
-          statusCounts.pending,
-          statusCounts.active,
-          statusCounts.completed,
-          statusCounts.cancelled,
-          statusCounts.negotiating
-        ],
-        backgroundColor: [
-          '#FCD34D', // yellow-400
-          '#34D399', // green-400
-          '#60A5FA', // blue-400
-          '#F87171', // red-400
-          '#A78BFA'  // purple-400
-        ],
-        borderColor: [
-          '#FBBF24', // yellow-500
-          '#10B981', // green-500
-          '#3B82F6', // blue-500
-          '#EF4444', // red-500
-          '#8B5CF6'  // purple-500
-        ],
+        data,
+        backgroundColor,
+        borderColor,
         borderWidth: 1
       }
     ]
@@ -736,32 +770,16 @@ const ContractStatusChart = ({ contracts }) => {
           
           <div className="w-full mt-4">
             <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center">
-                <div className="w-3 h-3 rounded-full bg-yellow-400 mr-2"></div>
-                <span className="text-sm text-gray-600">Pending</span>
-                <span className="ml-auto text-sm font-medium">{statusCounts.pending}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 rounded-full bg-green-400 mr-2"></div>
-                <span className="text-sm text-gray-600">Active</span>
-                <span className="ml-auto text-sm font-medium">{statusCounts.active}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 rounded-full bg-blue-400 mr-2"></div>
-                <span className="text-sm text-gray-600">Completed</span>
-                <span className="ml-auto text-sm font-medium">{statusCounts.completed}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 rounded-full bg-red-400 mr-2"></div>
-                <span className="text-sm text-gray-600">Cancelled</span>
-                <span className="ml-auto text-sm font-medium">{statusCounts.cancelled}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 rounded-full bg-purple-400 mr-2"></div>
-                <span className="text-sm text-gray-600">Negotiating</span>
-                <span className="ml-auto text-sm font-medium">{statusCounts.negotiating}</span>
-              </div>
-              <div className="flex items-center">
+              {Object.entries(statusCounts).map(([status, count]) => (
+                count > 0 && (
+                  <div key={status} className="flex items-center">
+                    <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: statusColors[status].bg }}></div>
+                    <span className="text-sm text-gray-600">{statusLabels[status]}</span>
+                    <span className="ml-auto text-sm font-medium">{count}</span>
+                  </div>
+                )
+              ))}
+              <div className="flex items-center col-span-2 mt-2 pt-2 border-t border-gray-100">
                 <div className="w-3 h-3 rounded-full bg-gray-400 mr-2"></div>
                 <span className="text-sm font-medium text-gray-800">Total</span>
                 <span className="ml-auto text-sm font-medium">{totalContracts}</span>
@@ -773,7 +791,7 @@ const ContractStatusChart = ({ contracts }) => {
       
       <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
         <Link
-          to="/contracts/manage"
+          to="/contracts"
           className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center justify-center md:justify-start"
         >
           View all contracts
@@ -789,20 +807,20 @@ const RecentContractsTimeline = ({ contracts }) => {
   if (!contracts || contracts.length === 0) {
     return (
       <motion.div 
-        className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100 mb-6 h-full"
+        className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.3 }}
       >
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800">Recent Contract Activity</h3>
+          <h3 className="text-lg font-semibold text-gray-800">Recent Contracts</h3>
         </div>
         <div className="p-6 text-center">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 mb-3">
             <FaHandshake className="h-6 w-6 text-gray-400" />
           </div>
-          <p className="text-gray-500 mb-1">No recent contract activity</p>
-          <p className="text-xs text-gray-400 mb-4">New contract activity will appear here</p>
+          <p className="text-gray-500 mb-1">No recent contracts</p>
+          <p className="text-xs text-gray-400 mb-4">Your contract activity will appear here</p>
         </div>
       </motion.div>
     );
@@ -875,16 +893,22 @@ const RecentContractsTimeline = ({ contracts }) => {
   
   return (
     <motion.div 
-      className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100 mb-6 h-full"
+      className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.3 }}
     >
-      <div className="px-6 py-4 border-b border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-800">Recent Contract Activity</h3>
+      <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        <h3 className="text-lg font-semibold text-gray-800">Recent Contracts</h3>
+        <Link
+          to="/contracts"
+          className="text-green-600 hover:text-green-800 text-sm font-medium flex items-center"
+        >
+          Manage all contracts <FaArrowRight className="ml-1 h-3 w-3" />
+        </Link>
       </div>
-
-      <div className="p-4">
+      
+      <div className="p-6">
         <div className="flow-root">
           <ul className="-mb-8">
             {sortedContracts.map((contract, contractIdx) => {
@@ -1247,7 +1271,33 @@ const FarmerDashboard = () => {
       // Now safely use array methods with better error handling
       const activeContracts = contracts.filter(c => c?.status === 'active').length;
       const pendingContracts = contracts.filter(c => c?.status === 'pending' || c?.status === 'requested').length;
+      const negotiatingContracts = contracts.filter(c => c?.status === 'negotiating').length;
+      const paymentPendingContracts = contracts.filter(c => c?.status === 'payment_pending').length;
       const completedContracts = contracts.filter(c => c?.status === 'completed').length;
+      const cancelledContracts = contracts.filter(c => c?.status === 'cancelled').length;
+      const harvestedContracts = contracts.filter(c => c?.status === 'harvested').length;
+      const deliveredContracts = contracts.filter(c => c?.status === 'delivered').length;
+      const readyForHarvestContracts = contracts.filter(c => c?.status === 'readyForHarvest').length;
+      const disputedContracts = contracts.filter(c => c?.status === 'disputed').length;
+      
+      // Verify that all contracts are accounted for
+      const countedContracts = activeContracts + pendingContracts + negotiatingContracts + 
+                              paymentPendingContracts + completedContracts + cancelledContracts +
+                              harvestedContracts + deliveredContracts + readyForHarvestContracts + 
+                              disputedContracts;
+      
+      if (countedContracts !== contracts.length) {
+        console.warn(`Contract status count mismatch: counted ${countedContracts}, total ${contracts.length}`);
+        
+        // Find contracts with unexpected statuses
+        const accounted = new Set(['active', 'pending', 'requested', 'negotiating', 'payment_pending', 
+                                  'completed', 'cancelled', 'harvested', 'delivered', 'readyForHarvest', 'disputed']);
+        const unexpectedStatuses = contracts
+          .filter(c => !accounted.has(c?.status))
+          .map(c => c?.status);
+          
+        console.warn('Unexpected statuses:', [...new Set(unexpectedStatuses)]);
+      }
       
       const totalRevenue = contracts
         .filter(c => c?.status === 'completed')
@@ -1296,15 +1346,27 @@ const FarmerDashboard = () => {
           activeProducts,
           activeContracts,
           pendingContracts,
-          totalRevenue,
           completedContracts,
+          negotiatingContracts,
+          paymentPendingContracts,
+          cancelledContracts,
+          harvestedContracts,
+          deliveredContracts,
+          readyForHarvestContracts,
+          disputedContracts,
+          totalContractValue: contracts
+            .filter(c => c?.status !== 'cancelled')
+            .reduce((sum, c) => sum + (parseFloat(c?.totalAmount) || 0), 0),
+          uniqueBuyers: uniqueBuyerIds.size,
           customerCount: uniqueBuyerIds.size,
-          upcomingHarvests
+          totalRevenue,
+          upcomingHarvests: upcomingHarvests.length,
+          weatherData
         },
-        weatherData,
-        contracts,
         products,
-        upcomingHarvests
+        contracts,
+        upcomingHarvests,
+        weatherData
       };
     } catch (error) {
       console.error("Dashboard data fetch error:", error);
@@ -1412,20 +1474,28 @@ const FarmerDashboard = () => {
             weatherData={dashboardData?.weatherData} 
           />
           
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            {/* Contract Status Chart */}
-            <div className="lg:col-span-1 flex flex-col">
-              <ContractStatusChart contracts={dashboardData?.contracts || []} />
+          {/* ===== Contracts Dashboard ===== */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <div className="lg:col-span-2">
+              <RecentContractsTimeline contracts={dashboardData?.contracts || []} /> 
+              
+              {/* Add a standalone button for clear visibility */}
+              <Link
+                to="/contracts"
+                className="mt-4 mb-8 w-full flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-green-600 hover:bg-green-700 transition-colors duration-300 space-x-2"
+              >
+                <FaHandshake className="mr-2" />
+                <span>Manage All Your Contracts</span>
+                <FaArrowRight className="ml-2" />
+              </Link>
+              
+              <UpcomingHarvests contracts={dashboardData?.contracts || []} />
             </div>
             
-            {/* Recent Contract Activity */}
-            <div className="lg:col-span-2 flex flex-col">
-              <RecentContractsTimeline contracts={dashboardData?.contracts || []} />
+            <div className="lg:col-span-1">
+              <ContractStatusChart contracts={dashboardData?.contracts || []} />
             </div>
           </div>
-          
-          {/* Upcoming Harvests */}
-          <UpcomingHarvests contracts={dashboardData?.contracts || []} />
           
           {/* Products Grid */}
           <ProductGrid products={dashboardData?.products || []} />

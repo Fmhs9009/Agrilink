@@ -78,7 +78,7 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
     }
     
     fetchContracts();
-    fetchContractStats();
+    fetchAllContractsForStats();
   }, [user, statusFilter, sortBy, sortOrder, currentPage, searchQuery]);
   
   // Update URL when filter values change
@@ -152,6 +152,26 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
         // Calculate stats excluding cancelled contracts
         const nonCancelledContracts = contractsData.filter(c => c.status !== 'cancelled');
         const activeContracts = contractsData.filter(c => c.status === 'active');
+        const pendingContracts = contractsData.filter(c => c.status === 'pending' || c.status === 'requested');
+        const negotiatingContracts = contractsData.filter(c => c.status === 'negotiating');
+        const paymentPendingContracts = contractsData.filter(c => c.status === 'payment_pending');
+        const completedContracts = contractsData.filter(c => c.status === 'completed');
+        const cancelledContracts = contractsData.filter(c => c.status === 'cancelled');
+        
+        // Verify that all contracts are accounted for
+        const countedContracts = activeContracts.length + pendingContracts.length + 
+                                negotiatingContracts.length + paymentPendingContracts.length + 
+                                completedContracts.length + cancelledContracts.length;
+        
+        // Check if there are any contracts with unexpected status values
+        if (countedContracts !== contractsData.length) {
+          console.warn(`Contract status count mismatch: counted ${countedContracts}, total ${contractsData.length}`);
+          // Find contracts with unexpected statuses
+          const unexpectedStatuses = contractsData
+            .filter(c => !['active', 'pending', 'requested', 'negotiating', 'payment_pending', 'completed', 'cancelled'].includes(c.status))
+            .map(c => c.status);
+          console.warn('Unexpected statuses:', [...new Set(unexpectedStatuses)]);
+        }
         
         const totalValue = nonCancelledContracts.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
         const averageValue = nonCancelledContracts.length > 0 
@@ -162,9 +182,11 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
           total: response.total || contractsData.length,
           byStatus: {
             active: activeContracts.length,
-            pending: contractsData.filter(c => c.status === 'pending').length,
-            completed: contractsData.filter(c => c.status === 'completed').length,
-            cancelled: contractsData.filter(c => c.status === 'cancelled').length
+            pending: pendingContracts.length,
+            negotiating: negotiatingContracts.length,
+            payment_pending: paymentPendingContracts.length,
+            completed: completedContracts.length,
+            cancelled: cancelledContracts.length
           },
           totalValue,
           averageValue
@@ -187,18 +209,58 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
     }
   };
   
-  const fetchContractStats = async () => {
+  // Fetch all contracts for statistics calculation
+  const fetchAllContractsForStats = async () => {
     try {
-      const response = await contractAPI.getContractStats();
+      const response = await contractAPI.getAllUserContracts();
       if (response.success) {
-        setStats(response.stats);
-      } else {
-        console.warn("Failed to load contract stats");
-        setStats(null);
+        const allContractsData = response.contracts || [];
+        
+        // Calculate stats from all contracts
+        const nonCancelledContracts = allContractsData.filter(c => c.status !== 'cancelled');
+        const activeContracts = allContractsData.filter(c => c.status === 'active');
+        const pendingContracts = allContractsData.filter(c => c.status === 'pending' || c.status === 'requested');
+        const negotiatingContracts = allContractsData.filter(c => c.status === 'negotiating');
+        const paymentPendingContracts = allContractsData.filter(c => c.status === 'payment_pending');
+        const completedContracts = allContractsData.filter(c => c.status === 'completed');
+        const cancelledContracts = allContractsData.filter(c => c.status === 'cancelled');
+        
+        // Verify that all contracts are accounted for
+        const countedContracts = activeContracts.length + pendingContracts.length + 
+                                 negotiatingContracts.length + paymentPendingContracts.length + 
+                                 completedContracts.length + cancelledContracts.length;
+        
+        // Check if there are any contracts with unexpected status values
+        if (countedContracts !== allContractsData.length) {
+          console.warn(`Contract status count mismatch: counted ${countedContracts}, total ${allContractsData.length}`);
+          // Find contracts with unexpected statuses
+          const unexpectedStatuses = allContractsData
+            .filter(c => !['active', 'pending', 'requested', 'negotiating', 'payment_pending', 'completed', 'cancelled'].includes(c.status))
+            .map(c => c.status);
+          console.warn('Unexpected statuses:', [...new Set(unexpectedStatuses)]);
+        }
+        
+        const totalValue = nonCancelledContracts.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+        const averageValue = nonCancelledContracts.length > 0 
+          ? totalValue / nonCancelledContracts.length 
+          : 0;
+        
+        setStats({
+          total: allContractsData.length,
+          byStatus: {
+            active: activeContracts.length,
+            pending: pendingContracts.length,
+            negotiating: negotiatingContracts.length,
+            payment_pending: paymentPendingContracts.length,
+            completed: completedContracts.length,
+            cancelled: cancelledContracts.length
+          },
+          totalValue,
+          averageValue
+        });
       }
-    } catch (err) {
-      console.warn("Error fetching contract stats:", err);
-      setStats(null);
+    } catch (error) {
+      console.error('Error fetching all contracts for stats:', error);
     }
   };
   
@@ -258,6 +320,7 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
       active: { bg: 'bg-green-100', text: 'text-green-800', icon: <FaHandshake className="mr-1.5" /> },
       completed: { bg: 'bg-blue-100', text: 'text-blue-800', icon: <FaCheckCircle className="mr-1.5" /> },
       cancelled: { bg: 'bg-red-100', text: 'text-red-800', icon: <FaTimes className="mr-1.5" /> },
+      payment_pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: <FaMoneyBillWave className="mr-1.5" /> },
     };
     
     const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-800', icon: <FaSpinner className="mr-1.5" /> };
@@ -265,7 +328,7 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
     return (
       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
         {config.icon}
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {status === 'payment_pending' ? 'Payment Pending' : status.charAt(0).toUpperCase() + status.slice(1)}
       </span>
     );
   };
@@ -428,6 +491,7 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
                   <option value="all">All Statuses</option>
                   <option value="requested">Requested</option>
                   <option value="negotiating">Negotiating</option>
+                  <option value="payment_pending">Payment Pending</option>
                   <option value="active">Active</option>
                   <option value="completed">Completed</option>
                   <option value="cancelled">Cancelled</option>
@@ -651,6 +715,7 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
                   <span className="font-medium">
                     {contract.status === 'completed' ? '100%' : 
                      contract.status === 'active' ? '50%' :
+                     contract.status === 'payment_pending' ? '35%' :
                      contract.status === 'negotiating' ? '25%' :
                      contract.status === 'requested' ? '10%' : '0%'}
                   </span>
@@ -660,12 +725,14 @@ const ContractsList = ({ title = "All Contracts", limit = 10, showFilters = true
                     className={`h-2.5 rounded-full ${
                       contract.status === 'completed' ? 'bg-blue-600' : 
                       contract.status === 'active' ? 'bg-green-600' :
+                      contract.status === 'payment_pending' ? 'bg-yellow-600' :
                       contract.status === 'negotiating' ? 'bg-purple-600' :
                       contract.status === 'requested' ? 'bg-amber-600' : 'bg-red-600'
                     }`}
                     style={{ 
                       width: contract.status === 'completed' ? '100%' : 
                              contract.status === 'active' ? '50%' :
+                             contract.status === 'payment_pending' ? '35%' :
                              contract.status === 'negotiating' ? '25%' :
                              contract.status === 'requested' ? '10%' : '0%'
                     }}
