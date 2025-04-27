@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { FaPhone, FaEnvelope, FaMapMarkerAlt } from 'react-icons/fa';
+import { contactAPI } from '../../services/api';
+import { toast } from 'react-hot-toast';
 
 const ContactUs = () => {
   const [formData, setFormData] = useState({
@@ -79,22 +81,29 @@ const ContactUs = () => {
     setIsSubmitting(true);
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Submit form to backend API
+      const response = await contactAPI.submitContactForm(formData);
       
-      // Reset form on success
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        subject: '',
-        message: ''
-      });
-      
-      setSubmitSuccess(true);
-      setTimeout(() => setSubmitSuccess(false), 5000);
+      if (response.success) {
+        // Reset form on success
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          subject: '',
+          message: ''
+        });
+        
+        setSubmitSuccess(true);
+        toast.success('Your message has been sent successfully!');
+        setTimeout(() => setSubmitSuccess(false), 5000);
+      } else {
+        // Handle API errors
+        toast.error(response.message || 'Failed to send message. Please try again.');
+      }
     } catch (error) {
       console.error('Error submitting form:', error);
+      toast.error('An unexpected error occurred. Please try again later.');
     } finally {
       setIsSubmitting(false);
     }

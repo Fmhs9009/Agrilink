@@ -13,6 +13,7 @@ const contractRoutes = require('./Routes/contractRoutes');
 const uploadRoutes = require('./Routes/uploadRoutes');
 const notificationRoutes = require('./routes/notificationRoute');
 const chatRoutes = require('./routes/chatRoutes');
+const contactRoutes = require('./Routes/contactRoutes');
 const http = require('http');
 const { Server } = require('socket.io');
 const setupSocketServer = require('./socket/socketManager');
@@ -54,6 +55,7 @@ app.use("/api/v1/contracts", contractRoutes);
 app.use("/api/v1/upload", uploadRoutes);
 app.use("/api/v1", notificationRoutes);
 app.use("/api/v1/chat", chatRoutes);
+app.use("/api/v1/contact", contactRoutes);
 
 // Serve temp files
 app.use('/tmp', Express.static(path.join(__dirname, 'tmp')));

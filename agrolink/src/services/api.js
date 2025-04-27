@@ -1028,4 +1028,13 @@ export const weatherAPI = {
   }
 };
 
+// Contact API service
+export const contactAPI = {
+  // Submit contact form
+  submitContactForm: async (formData) => {
+    console.log("Submitting contact form:", formData);
+    return handleApiResponse(() => api.post('/contact/submit', formData));
+  }
+};
+
 export default api; 
