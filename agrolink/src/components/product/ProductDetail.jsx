@@ -409,15 +409,15 @@ const ProductDetail = () => {
                 {product.availableQuantity > 0 ? (
                   <div className="mb-6">
                     <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
-                      Quantity for Contract
+                      Minimum Quantity for Contract
                     </label>
                     <div className="flex items-center">
-                      <button 
+                      {/* <button 
                         onClick={() => quantity > (product.minimumOrderQuantity || 1) && setQuantity(quantity - 1)}
                         className="bg-gray-200 px-3 py-2 rounded-l-md hover:bg-gray-300"
                       >
                         -
-                      </button>
+                      </button> */}
                       <input
                         type="number"
                         id="quantity"
@@ -431,14 +431,15 @@ const ProductDetail = () => {
                             setQuantity(value);
                           }
                         }}
+                        readOnly={true}
                         className="w-20 border-y border-gray-300 py-2 px-3 text-center focus:outline-none focus:ring-green-500 focus:border-green-500"
                       />
-                      <button 
+                      {/* <button 
                         onClick={() => quantity < product.availableQuantity && setQuantity(quantity + 1)}
                         className="bg-gray-200 px-3 py-2 rounded-r-md hover:bg-gray-300"
                       >
                         +
-                      </button>
+                      </button> */}
                       <span className="ml-3 text-gray-500">{product.unit}(s)</span>
                     </div>
                     <p className="mt-1 text-xs text-gray-500">
@@ -1003,23 +1004,40 @@ const ProductDetail = () => {
                         </div>
                         <div>
                           <p className="text-gray-500">Quantity:</p>
-                          <p className="font-medium">{contractFormData.contractQuantity} {product.unit}(s)</p>
+                          <p className="font-medium">{contractSuccess?.quantity || contractFormData.contractQuantity} {product.unit}(s)</p>
                         </div>
                         <div>
                           <p className="text-gray-500">Duration:</p>
-                          <p className="font-medium">{contractFormData.contractDuration} months</p>
+                          <p className="font-medium">{contractSuccess?.contractDuration || contractFormData.contractDuration} months</p>
                         </div>
                         <div>
                           <p className="text-gray-500">Total Value:</p>
-                          <p className="font-medium text-green-600">₹{product.price * contractFormData.contractQuantity}</p>
+                          <p className="font-medium text-green-600">₹{contractSuccess?.totalAmount || (product.price * contractFormData.contractQuantity)}</p>
                         </div>
                         <div>
                           <p className="text-gray-500">Delivery:</p>
-                          <p className="font-medium">{contractFormData.deliveryFrequency}</p>
+                          <p className="font-medium">{
+                            {
+                              'weekly': 'Weekly',
+                              'biweekly': 'Bi-Weekly',
+                              'monthly': 'Monthly',
+                              'quarterly': 'Quarterly',
+                              'onetime': 'One-Time Delivery'
+                            }[contractSuccess?.deliveryFrequency || contractFormData.deliveryFrequency] || (contractSuccess?.deliveryFrequency || contractFormData.deliveryFrequency)
+                          }</p>
                         </div>
                         <div>
                           <p className="text-gray-500">Payment Terms:</p>
-                          <p className="font-medium">{contractFormData.paymentTerms}</p>
+                          <p className="font-medium">{
+                            {
+                              'standard': 'Standard (50% advance, 50% on delivery)',
+                              'milestone': 'Milestone-based payments',
+                              'delivery': 'Full payment on delivery',
+                              'advance': 'Full payment in advance (10% discount)',
+                              'net30': 'Net 30 days',
+                              'net60': 'Net 60 days'
+                            }[contractSuccess?.paymentTerms || contractFormData.paymentTerms] || (contractSuccess?.paymentTerms || contractFormData.paymentTerms)
+                          }</p>
                         </div>
                         {contractSuccess && contractSuccess._id && (
                           <div className="col-span-2">
