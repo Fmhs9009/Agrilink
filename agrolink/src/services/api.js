@@ -851,4 +851,181 @@ export const userAPI = {
   }
 };
 
+// Weather API service using OpenWeatherMap
+export const weatherAPI = {
+  // OpenWeatherMap API key hardcoded from .env for development
+  _hardcodedApiKey: '4007eea268be514863351c50c97e6369',
+  
+  // Get API key with fallback to hardcoded key if environment variable fails
+  get apiKey() {
+    const envKey = process.env.REACT_APP_OPENWEATHER_API_KEY;
+    // console.log('API Key from env:', envKey ? 'Available' : 'Not available');
+    
+    // Use either the environment variable or the hardcoded key
+    return envKey || this._hardcodedApiKey;
+  },
+  
+  // Default weather data to use as fallback
+  defaultWeatherData: {
+    name: "Delhi",
+    main: {
+      temp: 26,
+      humidity: 65,
+      feels_like: 27,
+      temp_min: 24,
+      temp_max: 28,
+      pressure: 1012
+    },
+    weather: [
+      {
+        main: "Clear",
+        description: "clear sky",
+        icon: "01d"
+      }
+    ],
+    wind: {
+      speed: 3.5,
+      deg: 180
+    },
+    sys: {
+      country: "IN",
+      sunrise: Math.floor(Date.now() / 1000 - 3600 * 5),
+      sunset: Math.floor(Date.now() / 1000 + 3600 * 8)
+    }
+  },
+  
+  // Check if we have a valid API key
+  hasValidApiKey: function() {
+    const key = this.apiKey;
+    console.log('Current API key:', key ? 'Available' : 'Not available');
+    // Always return true since we have a hardcoded fallback
+    return true;
+  },
+  
+  // Get current weather by coordinates
+  getCurrentWeatherByCoords: async (lat, lon) => {
+    try {
+      // Always use the API key from the getter
+      const apiKey = weatherAPI.apiKey;
+      // console.log(`Fetching weather for coordinates: lat=${lat}, lon=${lon} with API key: ${apiKey.substring(0, 3)}...`);
+      
+      const response = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch weather data: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      // console.log('Received weather data:', data);
+      return data;
+    } catch (error) {
+      console.error('Error fetching weather data:', error);
+      // Return default data on error
+      return weatherAPI.defaultWeatherData;
+    }
+  },
+  
+  // Get current weather by city name
+  getCurrentWeatherByCity: async (city) => {
+    try {
+      // Always use the API key from the getter
+      const apiKey = weatherAPI.apiKey;
+      console.log(`Fetching weather for city: ${city} with API key: ${apiKey.substring(0, 3)}...`);
+      
+      const response = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&units=metric&appid=${apiKey}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch weather data: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Received weather data:', data);
+      return data;
+    } catch (error) {
+      console.error('Error fetching weather data:', error);
+      // Return default data on error
+      return weatherAPI.defaultWeatherData;
+    }
+  },
+  
+  // Get weather forecast by coordinates
+  getForecastByCoords: async (lat, lon) => {
+    // Return empty forecast if no API key
+    if (!weatherAPI.hasValidApiKey()) {
+      console.log('No OpenWeatherMap API key found, cannot fetch forecast');
+      return { list: [] };
+    }
+    
+    try {
+      const response = await fetch(
+        `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${weatherAPI.apiKey}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch forecast data: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching forecast data:', error);
+      return { list: [] };
+    }
+  },
+  
+  // Get geocoding data (coordinates from location name)
+  getCoordsByLocationName: async (locationName) => {
+    try {
+      // Always use the API key from the getter
+      const apiKey = weatherAPI.apiKey;
+      // console.log(`Getting coordinates for location: ${locationName} with API key: ${apiKey.substring(0, 3)}...`);
+      
+      // Add country code to improve accuracy for Indian cities
+      const searchQuery = locationName.includes(',') ? locationName : `${locationName},IN`;
+      
+      const response = await fetch(
+        `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(searchQuery)}&limit=1&appid=${apiKey}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch geocoding data: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      // console.log('Geocoding API response:', data);
+      
+      if (!data || data.length === 0) {
+        console.log(`Location "${locationName}" not found, using default location (Delhi)`);
+        return {
+          lat: 28.6139,
+          lon: 77.2090,
+          name: "Delhi",
+          country: "IN"
+        };
+      }
+      
+      // console.log('Using coordinates:', data[0].lat, data[0].lon);
+      return {
+        lat: data[0].lat,
+        lon: data[0].lon,
+        name: data[0].name,
+        country: data[0].country
+      };
+    } catch (error) {
+      console.error('Error fetching geocoding data:', error);
+      // Return Delhi coords on error
+      return {
+        lat: 28.6139,
+        lon: 77.2090,
+        name: "Delhi",
+        country: "IN"
+      };
+    }
+  }
+};
+
 export default api; 

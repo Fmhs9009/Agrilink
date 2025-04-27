@@ -380,7 +380,7 @@ const ContractDetail = () => {
   };
 
   // Handle contract status updates
-  const updateContractStatus = async (newStatus, skipConfirmation = false, paymentInfo = null) => {
+  const updateContractStatus = async (newStatus, skipConfirmation = false, paymentInfo = null, statusOptions = null) => {
     if (!skipConfirmation && !confirm(`Are you sure you want to update the contract status to ${newStatus}?`)) {
       return false;
     }
@@ -393,8 +393,19 @@ const ContractDetail = () => {
       const isPaymentStatus = ['active', 'harvested', 'completed'].includes(newStatus) && 
                               contract.status === 'payment_pending';
       
-      // Use contractService directly instead of generic api
-      const response = await contractService.updateContractStatus(id, newStatus, paymentInfo);
+      // Add options with additional metadata - use provided statusOptions if available
+      const options = statusOptions || {
+        reason: `Status updated by ${user.Name} (${userRole})`,
+        notes: isPaymentStatus ? `Payment confirmation for ${paymentStage} stage` : ''
+      };
+      
+      // Use contractService with enhanced error handling
+      const response = await contractService.updateContractStatus(
+        id, 
+        newStatus, 
+        paymentInfo,
+        options
+      );
       
       // Show appropriate message based on status
       if (isPaymentStatus && paymentStage) {
@@ -411,19 +422,33 @@ const ContractDetail = () => {
         
         toast.success(`${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment of ${formatCurrency(paymentAmount)} completed successfully! Contract is now ${newStatus}.`);
       } else {
-        toast.success(`Contract ${newStatus} successfully`);
+        toast.success(`Contract status updated to "${newStatus}" successfully`);
       }
       
-      // Update local contract state
-      setContract(prevContract => ({
-        ...prevContract,
-        status: newStatus
-      }));
+      // Update local contract state with full data from response or just status
+      if (response.contract) {
+        setContract(response.contract);
+      } else {
+        setContract(prevContract => ({
+          ...prevContract,
+          status: newStatus,
+          updatedAt: new Date().toISOString()
+        }));
+      }
+      
+      // Refresh the full contract data from API after a short delay
+      setTimeout(() => {
+        fetchContractById();
+      }, 1000);
       
       return true; // Return success for chaining
     } catch (error) {
       console.error(`Error updating contract to ${newStatus}:`, error);
-      toast.error(`Failed to update contract: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+      
+      // Display a more user-friendly error message
+      const errorMessage = error.message || 'An unknown error occurred';
+      toast.error(`Failed to update contract: ${errorMessage}`);
+      
       return false; // Return failure for chaining
     } finally {
       setCancelLoading(false);
@@ -743,8 +768,14 @@ const ContractDetail = () => {
   // Update handleAcceptContract to set payment_pending status and let DB handle it
   const handleAcceptContract = async () => {
     try {
+      // Add detailed options for the status update
+      const statusOptions = {
+        reason: `Contract accepted by ${user.Name} (${userRole})`,
+        notes: 'Contract accepted and is now awaiting advance payment from buyer.'
+      };
+      
       // Update contract status to payment_pending without confirmation
-      const success = await updateContractStatus('payment_pending', true);
+      const success = await updateContractStatus('payment_pending', true, null, statusOptions);
       if (success) {
         toast.success('Contract accepted. Waiting for advance payment.');
         // Refresh contract to get the updated status
@@ -761,10 +792,16 @@ const ContractDetail = () => {
   const handleRejectContract = async () => {
     if (window.confirm('Are you sure you want to reject this contract?')) {
       try {
+        // Add detailed options for the status update
+        const statusOptions = {
+          reason: `Contract rejected by ${user.Name} (${userRole})`,
+          notes: 'Contract rejected and cannot be further processed.'
+        };
+        
         // Reject without confirmation (already confirmed)
-        const success = await updateContractStatus('rejected', true);
+        const success = await updateContractStatus('cancelled', true, null, statusOptions);
         if (success) {
-          toast.success('Contract has been rejected');
+          toast.success('Contract has been rejected and marked as cancelled');
           fetchContractById();
         }
       } catch (err) {
@@ -777,8 +814,14 @@ const ContractDetail = () => {
   const handleMarkAsCompleted = async () => {
     if (window.confirm('Are you sure you want to mark this contract as completed?')) {
       try {
+        // Add detailed options for the status update
+        const statusOptions = {
+          reason: `Contract marked as completed by ${user.Name} (${userRole})`,
+          notes: 'All terms fulfilled. Contract successfully completed.'
+        };
+        
         // Complete without confirmation (already confirmed)
-        const success = await updateContractStatus('completed', true);
+        const success = await updateContractStatus('completed', true, null, statusOptions);
         if (success) {
           toast.success('Contract has been marked as completed');
           fetchContractById();
@@ -804,16 +847,31 @@ const ContractDetail = () => {
       formData.append('description', 'Crop has been harvested and is ready for processing.');
       
       try {
-        await contractService.addProgressUpdate(contract._id, formData);
+        // First, add a progress update to record the harvest event
+        const progressResponse = await contractService.addProgressUpdate(contract._id, formData);
+        
+        if (!progressResponse || !progressResponse.success) {
+          throw new Error(progressResponse?.message || 'Failed to add harvest progress update');
+        }
         
         // Check if midterm payment is needed
         if ((contract.paymentTerms?.midtermPercentage || 50) > 0) {
           // Update to payment_pending for midterm payment without confirmation
-          await updateContractStatus('payment_pending', true);
+          const statusOptions = {
+            reason: `Harvest completed by ${user.Name}`,
+            notes: 'Crop has been harvested and is ready for processing. Awaiting midterm payment.'
+          };
+          
+          await updateContractStatus('payment_pending', true, null, statusOptions);
           toast.info('Crop has been harvested. Waiting for midterm payment from buyer');
         } else {
           // If no midterm payment needed, just update to harvested without confirmation
-          await updateContractStatus('harvested', true);
+          const statusOptions = {
+            reason: `Harvest completed by ${user.Name}`,
+            notes: 'Crop has been harvested and is ready for processing. No midterm payment required.'
+          };
+          
+          await updateContractStatus('harvested', true, null, statusOptions);
           toast.success('Contract marked as harvested');
         }
         
@@ -845,16 +903,31 @@ const ContractDetail = () => {
       formData.append('description', 'Crop has been delivered to the buyer.');
       
       try {
-        await contractService.addProgressUpdate(contract._id, formData);
+        // First, add a progress update to record the delivery event
+        const progressResponse = await contractService.addProgressUpdate(contract._id, formData);
+        
+        if (!progressResponse || !progressResponse.success) {
+          throw new Error(progressResponse?.message || 'Failed to add delivery progress update');
+        }
         
         // Check if final payment is needed
         if ((contract.paymentTerms?.finalPercentage || 30) > 0) {
           // Update to payment_pending for final payment without confirmation
-          await updateContractStatus('payment_pending', true);
+          const statusOptions = {
+            reason: `Delivery completed by ${user.Name}`,
+            notes: 'Crop has been delivered to the buyer. Awaiting final payment.'
+          };
+          
+          await updateContractStatus('payment_pending', true, null, statusOptions);
           toast.info('Crop has been delivered. Waiting for final payment from buyer.');
         } else {
           // If no final payment, mark as delivered without confirmation
-          await updateContractStatus('delivered', true);
+          const statusOptions = {
+            reason: `Delivery completed by ${user.Name}`,
+            notes: 'Crop has been delivered to the buyer. No final payment required.'
+          };
+          
+          await updateContractStatus('delivered', true, null, statusOptions);
           toast.success('Contract marked as delivered');
         }
         

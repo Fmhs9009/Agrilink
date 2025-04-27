@@ -148,9 +148,10 @@ const contractService = {
    * @param {string} id - Contract ID
    * @param {string} status - New status
    * @param {Object} paymentInfo - Optional payment information
+   * @param {Object} options - Additional options for status update
    * @returns {Promise<Object>} - Updated contract
    */
-  updateContractStatus: async (id, status, paymentInfo = null) => {
+  updateContractStatus: async (id, status, paymentInfo = null, options = {}) => {
     try {
       const token = authService.getToken();
       
@@ -158,8 +159,23 @@ const contractService = {
         throw new Error('Authentication required');
       }
       
+      // Validate status is valid according to contract model
+      const validStatuses = [
+        "requested", "negotiating", "payment_pending", "accepted", 
+        "active", "readyForHarvest", "harvested", "delivered", 
+        "completed", "cancelled", "disputed"
+      ];
+      
+      if (!validStatuses.includes(status)) {
+        throw new Error(`Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`);
+      }
+      
       // Prepare request data with status and any additional info
-      const requestData = { status };
+      const requestData = { 
+        status,
+        reason: options.reason || '',
+        notes: options.notes || ''
+      };
       
       // If payment info is provided, include it in the request
       if (paymentInfo) {
@@ -177,19 +193,62 @@ const contractService = {
       
       console.log(`Sending contract status update request: ${id} -> ${status}`, requestData);
       
-      // Both farmers and buyers can use this endpoint
-      const response = await axios.put(`${API_BASE_URL}/contracts/${id}/status`, requestData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+      try {
+        // First attempt using the PUT method (RESTful approach)
+        const response = await axios.put(`${API_BASE_URL}/contracts/${id}/status`, requestData, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        console.log('Contract status update response:', response.data);
+        return response.data;
+      } catch (error) {
+        if (error.response && error.response.status === 404) {
+          // If PUT method fails with 404, try legacy endpoint as fallback
+          console.log('PUT endpoint not found, trying legacy POST endpoint');
+          
+          const legacyResponse = await axios.post(`${API_BASE_URL}/contracts/${id}/status`, requestData, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          console.log('Contract status update legacy response:', legacyResponse.data);
+          return legacyResponse.data;
+        } else {
+          // For other errors, rethrow
+          throw error;
         }
-      });
-      
-      console.log('Contract status update response:', response.data);
-      return response.data;
+      }
     } catch (error) {
-      console.error(`Error updating contract ${id} status:`, error);
-      throw error;
+      console.error(`Error updating contract ${id} status to ${status}:`, error);
+      
+      // Enhance error message based on error type
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        const serverErrorMsg = error.response.data?.message || 'Server error';
+        const statusCode = error.response.status;
+        
+        if (statusCode === 403) {
+          throw new Error(`Permission denied: You don't have permission to change this contract status to ${status}`);
+        } else if (statusCode === 400) {
+          throw new Error(`Invalid request: ${serverErrorMsg}`);
+        } else if (statusCode === 409) {
+          throw new Error(`Status conflict: ${serverErrorMsg}`);
+        } else {
+          throw new Error(`Server error (${statusCode}): ${serverErrorMsg}`);
+        }
+      } else if (error.request) {
+        // The request was made but no response was received
+        throw new Error('No response from server. Please check your internet connection and try again.');
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        throw error;
+      }
     }
   },
   
