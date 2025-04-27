@@ -8,6 +8,8 @@ const Otp=OTP;
 const ErrorHandler = require('../utils/errorHandler');
 const { AUTH_CONFIG, STATUS_CODES } = require('../config/constants');
 const { sendEmail } = require('../utils/emailService');
+const cloudinary = require('cloudinary');
+const fs = require('fs');
 
 // Export the Signup function as a route handler
 exports.Signup = async (req, res) => {
@@ -422,6 +424,113 @@ exports.updateProfile = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating profile:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update profile",
+      error: error.message
+    });
+  }
+};
+
+exports.updateProfileWithImage = async (req, res) => {
+  try {
+    const { 
+      Name, 
+      contactNumber, 
+      farmName, 
+      FarmLocation, 
+      accountNumber,
+      ifscCode,
+      upiId 
+    } = req.body;
+    
+    const userId = req.user.id;
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Update fields if provided
+    const updateData = {};
+    if (Name) updateData.Name = Name;
+    if (contactNumber) updateData.contactNumber = contactNumber;
+    
+    // Update FarmLocation for both farmers and customers
+    if (FarmLocation) updateData.FarmLocation = FarmLocation;
+    
+    // For farmers, also update farmName and bank details if provided
+    if (user.accountType === 'farmer') {
+      if (farmName) updateData.farmName = farmName;
+      if (accountNumber) updateData.accountNumber = accountNumber;
+      if (ifscCode) updateData.ifscCode = ifscCode;
+      if (upiId) updateData.upiId = upiId;
+    }
+
+    // Handle image upload if present
+    if (req.files && req.files.image) {
+      const file = req.files.image;
+      
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+      if (!allowedTypes.includes(file.mimetype)) {
+        return res.status(400).json({
+          success: false,
+          message: "Please upload a valid image (JPEG, PNG, WEBP)"
+        });
+      }
+      
+      // Validate file size (5MB max)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        return res.status(400).json({
+          success: false,
+          message: "Image size should be less than 5MB"
+        });
+      }
+
+      try {
+        // Upload to Cloudinary
+        const result = await cloudinary.uploader.upload(file.tempFilePath, {
+          folder: 'users',
+          crop: "scale"
+        });
+        
+        // Update image URL
+        updateData.image = result.secure_url;
+        
+        // Cleanup temp file
+        fs.unlink(file.tempFilePath, (err) => {
+          if (err) console.error('Error deleting temp file:', err);
+        });
+      } catch (cloudinaryError) {
+        console.error('Cloudinary upload error:', cloudinaryError);
+        return res.status(500).json({
+          success: false,
+          message: "Error uploading image",
+          error: cloudinaryError.message
+        });
+      }
+    }
+
+    // Update user
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updateData,
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error("Error updating profile with image:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to update profile",

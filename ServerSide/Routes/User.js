@@ -2,7 +2,7 @@ const Express = require("express");
 const router = Express.Router();
 
 const { verifyToken, isFarmer, isBuyer, isAdmin } = require("../Middleware/auth");
-const { sendOTP, Signup, Login, changePassword, verifyotp, updateProfile, getUserById, requestPasswordReset, resetPassword } = require("../Controller/Auth");
+const { sendOTP, Signup, Login, changePassword, verifyotp, updateProfile, getUserById, requestPasswordReset, resetPassword, updateProfileWithImage } = require("../Controller/Auth");
 
 // Authentication routes
 router.post("/login", Login);
@@ -16,7 +16,8 @@ router.post("/password/reset", resetPassword);
 // Protected routes (require authentication)
 router.post("/changePassword", verifyToken, changePassword);
 router.post("/verifyotp", verifyotp);
-router.post("/updateProfile", verifyToken, updateProfile);
+router.put("/profile", verifyToken, updateProfile);
+router.put("/profile-with-image", verifyToken, updateProfileWithImage);
 
 // Authorization check routes
 router.post("/authenticate", verifyToken, (req, res) => {

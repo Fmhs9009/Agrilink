@@ -511,11 +511,26 @@ class AuthService {
 
   async updateProfile(userData) {
     try {
-      const response = await authAxios.put('/auth/profile', userData);
-      this.setUser(response.data.user);
-      toast.success('Profile updated successfully');
-      return { success: true, data: response.data.user };
+      // Use JSON format for all profile updates
+      const response = await authAxios.put('/auth/profile', userData, { 
+        headers: { 'Content-Type': 'application/json' },
+        withCredentials: true
+      });
+      
+      // Update the user in our storage
+      if (response.data && response.data.user) {
+        this.setUser(response.data.user);
+        toast.success('Profile updated successfully');
+        return { success: true, data: response.data.user };
+      } else {
+        return { 
+          success: true, 
+          message: 'Profile updated but no user data returned',
+          data: response.data
+        };
+      }
     } catch (error) {
+      console.error('Profile update error:', error);
       return { 
         success: false, 
         message: error.response?.data?.message || 'Profile update failed' 
