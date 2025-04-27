@@ -347,7 +347,7 @@ const ProductCard = ({ product }) => {
                 </p>
               </div>
             </div>
-            <div className="text-xs text-gray-500">{createdDate}</div>
+            <div className="text-xs text-gray-500 mb-6">{createdDate}</div>
           </div>
         </div>
         

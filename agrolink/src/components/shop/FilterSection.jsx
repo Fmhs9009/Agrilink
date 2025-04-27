@@ -427,7 +427,7 @@ const FilterSection = ({
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
               >
                 <option value="all">All states</option>
-                {INDIAN_STATES.map((state) => (
+                {[...INDIAN_STATES].sort().map((state) => (
                   <option key={state} value={state}>
                     {state}
                   </option>

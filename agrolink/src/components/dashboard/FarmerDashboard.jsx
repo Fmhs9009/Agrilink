@@ -1435,7 +1435,7 @@ const FarmInsights = ({ contracts, products }) => {
       </div>
       
       {/* Customer Demographics Chart - Placeholder */}
-      <div className="bg-white rounded-lg p-4 border border-gray-100 mt-4">
+      {/* <div className="bg-white rounded-lg p-4 border border-gray-100 mt-4">
         <div className="flex justify-between items-center mb-4">
           <h4 className="text-sm font-medium text-gray-900">Customer Demographics</h4>
         </div>
@@ -1490,7 +1490,7 @@ const FarmInsights = ({ contracts, products }) => {
             Feature in development
           </div>
         </div>
-      </div>
+      </div> */}
     </motion.div>
   );
 };
