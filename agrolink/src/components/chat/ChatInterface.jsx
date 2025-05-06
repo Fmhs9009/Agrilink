@@ -103,18 +103,20 @@ const ChatInterface = () => {
         // 5. Set up socket error listener
         const socketErrorUnsubscribe = socketService.on('socket_error', (errorData) => {
           console.error('Socket error received:', errorData);
+          // Disable showing UI errors to prevent popup spam
           // Only show UI errors for important issues
-          if (errorData.message && (
-              errorData.message.includes('authentication') || 
-              errorData.message.includes('Failed to send')
-            )) {
-            toast.error(`Chat error: ${errorData.message}`, { id: 'socket-chat-error' });
-          }
+          // if (errorData.message && (
+          //     errorData.message.includes('authentication') || 
+          //     errorData.message.includes('Failed to send')
+          //   )) {
+          //   toast.error(`Chat error: ${errorData.message}`, { id: 'socket-chat-error' });
+          // }
         });
         
         // 6. Set up message listeners even if socket isn't connected (for future reconnection)
         const newMessageUnsubscribe = socketService.on('new_message', (message) => {
-          console.log('📩 New message received:', message);
+          // Reduce console logging to improve performance
+          // console.log('📩 New message received:', message);
           
           // Only handle messages for this contract
           if (message.contractId !== contractId) return;
@@ -134,7 +136,7 @@ const ChatInterface = () => {
               );
               
               if (duplicateByImageUrl) {
-                console.log('🖼️ Duplicate image detected by URL, skipping:', message.image.url);
+                // console.log('🖼️ Duplicate image detected by URL, skipping:', message.image.url);
                 return prev;
               }
             }
@@ -184,21 +186,21 @@ const ChatInterface = () => {
               );
               
               if (tempIndex >= 0) {
-                console.log('📩 Replacing temp image with real one:', message);
+                // console.log('📩 Replacing temp image with real one:', message);
                 // Replace temp image with real one
                 const newMessages = [...prev];
                 newMessages[tempIndex] = message;
                 
                 // Log the replacement for debugging
-                console.log('Temp message:', prev[tempIndex]);
-                console.log('Real message:', message);
+                // console.log('Temp message:', prev[tempIndex]);
+                // console.log('Real message:', message);
                 
                 return newMessages;
               }
             }
             
             // Otherwise add as new message
-            console.log('📩 Adding new message to state:', message);
+            // console.log('📩 Adding new message to state:', message);
             return [...prev, message];
           });
           
@@ -600,7 +602,7 @@ const ChatInterface = () => {
         
         // Check if the temp message is still in 'sending' state
         const stillSending = messages.some(msg => 
-          msg._id === tempId && msg.isTemp && msg.status === 'sending');
+            msg._id === tempId && msg.isTemp && msg.status === 'sending');
           
         // If message is still unconfirmed and we didn't already use the API, try API now
         if (stillSending && !apiResult) {
@@ -624,12 +626,12 @@ const ChatInterface = () => {
               setMessages(prev => 
                 prev.map(msg => {
                   if (msg._id === tempId) {
-                    return {
-                      ...msg,
-                      status: 'uncertain',
-                    };
-                  }
-                  return msg;
+                return {
+                  ...msg,
+                  status: 'uncertain',
+                };
+              }
+              return msg;
                 })
               );
             }
@@ -1195,33 +1197,24 @@ const ChatInterface = () => {
         </div>
       )}
       
-      {/* Connection Status Indicator */}
-      <div className="px-3 py-1 text-xs border-t border-gray-200">
-        <div className="flex justify-between items-center">
-          <span className={`flex items-center ${socketConnected ? 'text-green-600' : 'text-red-600'}`}>
-            <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'} mr-1`}></span>
-            {socketConnected ? 'Connected' : 'Disconnected'}
-          </span>
-          
-          {!socketConnected && (
+      {/* Simplified Connection Status Indicator - only show when there are issues */}
+      {connectionIssue && (
+        <div className="px-3 py-1 text-xs border-t border-gray-200">
+          <div className="flex justify-between items-center">
+            <span className="text-red-600 flex items-center">
+              <span className="w-2 h-2 rounded-full bg-red-500 mr-1"></span>
+              Disconnected
+            </span>
+            
             <button 
               onClick={forceReconnect}
               className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
             >
-              <FaSpinner className={`mr-1 ${connectionIssue ? 'animate-spin' : ''}`} /> Reconnect
+              <FaSpinner className="mr-1" /> Reconnect
             </button>
-          )}
-          
-          {connectionIssue && socketConnected && (
-            <button 
-              onClick={refreshMessages}
-              className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center"
-            >
-              <FaSpinner className="mr-1" /> Refresh Messages
-            </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
       
       {/* Messages Area */}
       <div 

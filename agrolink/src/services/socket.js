@@ -8,7 +8,7 @@ class SocketService {
     this.socket = null;
     this.isConnected = false;
     this.token = null;
-    this.DEBUG = true; // For detailed logging
+    this.DEBUG = false; // Disable detailed logging to improve performance
     this.messageTimeouts = {};
     this.pendingMessages = {};
     this.activeRooms = {};
@@ -160,12 +160,12 @@ class SocketService {
         errorMessage = JSON.stringify(error);
       }
       
-      // Show user-friendly error toast for important socket errors
-      if (errorMessage.includes('authentication') || 
-          errorMessage.includes('unauthorized') ||
-          errorMessage.includes('Failed to send message')) {
-        toast.error('Chat error: ' + errorMessage, { id: 'socket-error' });
-      }
+      // Disable toast for socket errors to prevent popup spam
+      // if (errorMessage.includes('authentication') || 
+      //     errorMessage.includes('unauthorized') ||
+      //     errorMessage.includes('Failed to send message')) {
+      //   toast.error('Chat error: ' + errorMessage, { id: 'socket-error' });
+      // }
       
       // Emit error event for components to handle
       this.triggerEvent('socket_error', { error, message: errorMessage });
@@ -316,14 +316,15 @@ class SocketService {
     const statusChanged = this._lastConnectedStatus !== connected;
     this._lastConnectedStatus = connected;
     
-    if (statusChanged) {
-      if (connected) {
-        toast.success('Chat connected', { id: 'socket-connected', duration: 2000 });
-      } else if (reason !== 'io client disconnect') {
-        // Don't show disconnection message if we intentionally disconnected
-        toast.error('Chat disconnected. Reconnecting...', { id: 'socket-disconnected' });
-      }
-    }
+    // Disable toast notifications to prevent repeated popups
+    // if (statusChanged) {
+    //   if (connected) {
+    //     toast.success('Chat connected', { id: 'socket-connected', duration: 2000 });
+    //   } else if (reason !== 'io client disconnect') {
+    //     // Don't show disconnection message if we intentionally disconnected
+    //     toast.error('Chat disconnected. Reconnecting...', { id: 'socket-disconnected' });
+    //   }
+    // }
     
     // Notify all subscribers
     this.triggerEvent('connection_status', { connected, reason });
