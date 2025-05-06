@@ -175,10 +175,9 @@ const ProfileEdit = () => {
           }
         }
       }
-      
-      // Map front-end field names to backend field names
-      const backendData = {
-        Name: formData.name,
+    // Map front-end field names to backend field names
+    const backendData = {
+      Name: formData.name,
       };
       
       if (formData.phone) {
@@ -188,22 +187,22 @@ const ProfileEdit = () => {
       if (locationString) {
         backendData.FarmLocation = locationString;
       }
-      
-      // Add bank details for farmers
-      if (user?.accountType === 'farmer') {
+    
+    // Add bank details for farmers
+    if (user?.accountType === 'farmer') {
         if (formData.accountNumber) {
-          backendData.accountNumber = formData.accountNumber;
+      backendData.accountNumber = formData.accountNumber;
         }
         
         if (formData.ifscCode) {
-          backendData.ifscCode = formData.ifscCode;
+      backendData.ifscCode = formData.ifscCode;
         }
         
         if (formData.upiId) {
-          backendData.upiId = formData.upiId;
+      backendData.upiId = formData.upiId;
         }
-      }
-      
+    }
+    
       const result = await authService.updateProfile(backendData);
       
       if (result.success) {
@@ -277,21 +276,21 @@ const ProfileEdit = () => {
             {/* Personal Information Section */}
             <div className="bg-gray-50 p-4 rounded-md">
               <h4 className="text-lg font-medium text-gray-800 mb-4">Personal Information</h4>
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div className="relative">
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div className="relative">
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
                     Full Name *
-                  </label>
-                  <div className="relative rounded-md shadow-sm">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <FaUser className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      type="text"
-                      name="name"
-                      id="name"
-                      value={formData.name}
-                      onChange={handleChange}
+                </label>
+                <div className="relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FaUser className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    name="name"
+                    id="name"
+                    value={formData.name}
+                    onChange={handleChange}
                       className={`pl-10 block w-full border ${
                         errors.name ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
                       } rounded-md shadow-sm py-2 px-3 focus:outline-none`}
@@ -302,43 +301,43 @@ const ProfileEdit = () => {
                   {errors.name && (
                     <p className="mt-1 text-sm text-red-600">{errors.name}</p>
                   )}
-                </div>
+              </div>
 
-                <div className="relative">
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email (Non-editable)
-                  </label>
-                  <div className="relative rounded-md shadow-sm">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <FaEnvelope className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      type="email"
-                      name="email"
-                      id="email"
-                      value={formData.email}
-                      readOnly
-                      disabled
-                      className="pl-10 block w-full bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-500"
-                    />
+              <div className="relative">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                  Email (Non-editable)
+                </label>
+                <div className="relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FaEnvelope className="h-5 w-5 text-gray-400" />
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
+                  <input
+                    type="email"
+                    name="email"
+                    id="email"
+                    value={formData.email}
+                    readOnly
+                    disabled
+                    className="pl-10 block w-full bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-500"
+                  />
                 </div>
+                <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
+              </div>
 
-                <div className="relative">
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone Number
-                  </label>
-                  <div className="relative rounded-md shadow-sm">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <FaPhone className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      type="tel"
-                      name="phone"
-                      id="phone"
-                      value={formData.phone}
-                      onChange={handleChange}
+              <div className="relative">
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <div className="relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FaPhone className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="tel"
+                    name="phone"
+                    id="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
                       className={`pl-10 block w-full border ${
                         errors.phone ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
                       } rounded-md shadow-sm py-2 px-3 focus:outline-none`}
@@ -349,8 +348,8 @@ const ProfileEdit = () => {
                     <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
                   )}
                 </div>
+                </div>
               </div>
-            </div>
 
             {/* Address Information Section */}
             <div className="bg-gray-50 p-4 rounded-md">
@@ -358,16 +357,16 @@ const ProfileEdit = () => {
                 {user?.accountType === 'farmer' ? 'Farm Location' : 'Address Information'}
               </h4>
               <div className="space-y-4">
-                <div className="relative">
+              <div className="relative">
                   <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
                     Address
-                  </label>
-                  <div className="relative rounded-md shadow-sm">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <FaMapMarkerAlt className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      type="text"
+                </label>
+                <div className="relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FaMapMarkerAlt className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
                       name="address"
                       id="address"
                       value={formData.address}
@@ -450,11 +449,11 @@ const ProfileEdit = () => {
                     <p className="mt-1 text-sm text-red-600">{errors.pincode}</p>
                   )}
                 </div>
+                </div>
               </div>
-            </div>
 
             {/* Payment Information Section - Only for Farmers */}
-            {user?.accountType === 'farmer' && (
+              {user?.accountType === 'farmer' && (
               <div className="bg-gray-50 p-4 rounded-md">
                 <h4 className="text-lg font-medium text-gray-800 mb-4">Payment Information</h4>
                 <p className="text-sm text-gray-600 mb-4">
