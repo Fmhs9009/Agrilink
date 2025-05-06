@@ -26,7 +26,7 @@ const messageSchema = new mongoose.Schema({
     // Message type (regular text message or counter offer)
     messageType: {
         type: String,
-        enum: ['text', 'counterOffer', 'systemMessage'],
+        enum: ['text', 'image', 'counterOffer', 'systemMessage'],
         default: 'text',
         required: true
     },
@@ -36,6 +36,22 @@ const messageSchema = new mongoose.Schema({
         type: String,
         required: function() {
             return this.messageType === 'text' || this.messageType === 'systemMessage';
+        }
+    },
+    
+    // Image URL for image messages
+    image: {
+        public_id: {
+            type: String,
+            required: function() {
+                return this.messageType === 'image';
+            }
+        },
+        url: {
+            type: String,
+            required: function() {
+                return this.messageType === 'image';
+            }
         }
     },
     

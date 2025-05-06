@@ -3,6 +3,8 @@ const Contract = require('../Model/Contract');
 const User = require('../Model/User');
 const catchAsyncErrors = require('../middleware/catchAsyncErrors');
 const ErrorHandler = require('../utils/errorHandler');
+const { cloudinary } = require('../config/cloudinary');
+const fs = require('fs');
 
 // Get messages for a specific contract
 exports.getMessages = catchAsyncErrors(async (req, res, next) => {
@@ -320,6 +322,117 @@ exports.acceptCounterOffer = catchAsyncErrors(async (req, res, next) => {
         success: true,
         message: 'Counter offer accepted successfully'
     });
+});
+
+// Send an image message
+exports.sendImageMessage = catchAsyncErrors(async (req, res, next) => {
+    try {
+        const { contractId } = req.params;
+        const userId = req.user._id;
+        
+        // Check if image is uploaded
+        if (!req.files || !req.files.image) {
+            return next(new ErrorHandler('Please upload an image', 400));
+        }
+        
+        // Validate contract existence
+        const contract = await Contract.findById(contractId);
+        if (!contract) {
+            return next(new ErrorHandler('Contract not found', 404));
+        }
+        
+        // Check if user has access to this contract
+        const farmerId = contract.farmer.toString();
+        const buyerId = contract.buyer.toString();
+        
+        if (userId.toString() !== farmerId && userId.toString() !== buyerId) {
+            return next(new ErrorHandler('You do not have access to this contract', 403));
+        }
+        
+        // Determine recipient
+        const recipientId = userId.toString() === farmerId ? buyerId : farmerId;
+        
+        // Process the image file
+        const file = req.files.image;
+        
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+        if (!allowedTypes.includes(file.mimetype)) {
+            return next(new ErrorHandler('Please upload a valid image (JPEG, PNG, WEBP)', 400));
+        }
+        
+        // Validate file size (5MB max)
+        const maxSize = 5 * 1024 * 1024;
+        if (file.size > maxSize) {
+            return next(new ErrorHandler('Image size should be less than 5MB', 400));
+        }
+        
+        // Upload to Cloudinary
+        const result = await cloudinary.uploader.upload(file.tempFilePath, {
+            folder: 'chat_images',
+            crop: "scale"
+        });
+        
+        // Clean up temp file
+        fs.unlink(file.tempFilePath, (err) => {
+            if (err) console.error('Error deleting temp file:', err);
+        });
+        
+        // Create message
+        const newMessage = await Message.create({
+            contractId,
+            senderId: userId,
+            recipientId,
+            messageType: 'image',
+            content: req.body.caption || '',
+            image: {
+                public_id: result.public_id,
+                url: result.secure_url
+            },
+            read: false
+        });
+        
+        // Populate sender details
+        const populatedMessage = await Message.findById(newMessage._id)
+            .populate('senderId', 'Name photo accountType');
+        
+        // Get socket.io instance from req
+        const io = req.app.get('socketio');
+        
+        // If io exists, emit real-time update to all users in the contract room
+        if (io) {
+            // Emit to contract room
+            const roomName = `contract:${contractId}`;
+            
+            try {
+                console.log(`Emitting image message to room ${roomName}`);
+                io.to(roomName).emit('new_message', populatedMessage);
+                
+                // Also notify recipient
+                io.to(`user:${recipientId}`).emit('new_notification', {
+                    type: 'new_message',
+                    message: `New image from ${req.user.Name}`,
+                    data: {
+                        contractId,
+                        senderId: userId
+                    }
+                });
+            } catch (socketError) {
+                console.error('Socket emission error:', socketError);
+                // Continue anyway to return HTTP response
+            }
+        } else {
+            console.log('Socket.io not available for real-time update');
+        }
+        
+        res.status(201).json({
+            success: true,
+            message: populatedMessage
+        });
+    } catch (error) {
+        console.error('Error sending image message:', error);
+        return next(new ErrorHandler(error.message, 500));
+    }
 });
 
 module.exports = exports; 

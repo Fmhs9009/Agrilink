@@ -2,12 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaPaperPlane, FaSpinner, FaChevronLeft, FaExclamationTriangle, FaHandshake, FaFileContract, FaUser, FaCalculator, FaCalendarAlt, FaMoneyBillWave, FaCheck, FaTimes } from 'react-icons/fa';
+import { FaPaperPlane, FaSpinner, FaChevronLeft, FaExclamationTriangle, FaHandshake, FaFileContract, FaUser, FaCalculator, FaCalendarAlt, FaMoneyBillWave, FaCheck, FaTimes, FaImage, FaTimesCircle } from 'react-icons/fa';
 import { formatDistanceToNow } from 'date-fns';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { api } from '../../services/api';
 import socketService from '../../services/socket';
 import authService from '../../services/auth/authService';
+import chatService from '../../services/chatService';
+import imageService from '../../services/imageService';
+import MessageItem from './MessageItem';
 
 const ChatInterface = () => {
   const { contractId } = useParams();
@@ -39,6 +42,11 @@ const ChatInterface = () => {
   });
   const [socketConnected, setSocketConnected] = useState(false);
   const [connectionIssue, setConnectionIssue] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imageCaption, setImageCaption] = useState('');
+  const [imagePreview, setImagePreview] = useState(null);
+  const imageInputRef = useRef(null);
   
   // Determine if user is farmer or buyer
   const isFarmer = contract?.farmer?._id === user?._id;
@@ -92,7 +100,19 @@ const ChatInterface = () => {
           }
         });
         
-        // 5. Set up message listeners even if socket isn't connected (for future reconnection)
+        // 5. Set up socket error listener
+        const socketErrorUnsubscribe = socketService.on('socket_error', (errorData) => {
+          console.error('Socket error received:', errorData);
+          // Only show UI errors for important issues
+          if (errorData.message && (
+              errorData.message.includes('authentication') || 
+              errorData.message.includes('Failed to send')
+            )) {
+            toast.error(`Chat error: ${errorData.message}`, { id: 'socket-chat-error' });
+          }
+        });
+        
+        // 6. Set up message listeners even if socket isn't connected (for future reconnection)
         const newMessageUnsubscribe = socketService.on('new_message', (message) => {
           console.log('📩 New message received:', message);
           
@@ -101,9 +121,23 @@ const ChatInterface = () => {
           
           // Add message to state (avoiding duplicates)
           setMessages(prev => {
-            // Check if message already exists
-            const exists = prev.some(m => m._id === message._id);
-            if (exists) return prev;
+            // First check if this exact message already exists by ID
+            const existsById = prev.some(m => m._id === message._id);
+            if (existsById) return prev;
+            
+            // Check for duplicate images by URL to avoid double images
+            if (message.messageType === 'image' && message.image?.url) {
+              const duplicateByImageUrl = prev.some(m => 
+                m.messageType === 'image' && 
+                m.image?.url === message.image.url && 
+                !m.image.url.startsWith('data:') // Don't match data URLs
+              );
+              
+              if (duplicateByImageUrl) {
+                console.log('🖼️ Duplicate image detected by URL, skipping:', message.image.url);
+                return prev;
+              }
+            }
             
             // Check if there's a temporary message to replace
             if (message.messageType === 'text') {
@@ -137,7 +171,34 @@ const ChatInterface = () => {
               }
             }
             
+            // Check for temporary image messages
+            if (message.messageType === 'image') {
+              // First try to find a temporary image from the same sender with similar timestamp
+              // This is more reliable for image matching
+              const tempIndex = prev.findIndex(m => 
+                m.isTemp && 
+                m.messageType === 'image' && 
+                m.senderId._id === message.senderId._id &&
+                // If we have a data URL temp image from this sender, assume it's this one
+                m.image && m.image.url && m.image.url.startsWith('data:')
+              );
+              
+              if (tempIndex >= 0) {
+                console.log('📩 Replacing temp image with real one:', message);
+                // Replace temp image with real one
+                const newMessages = [...prev];
+                newMessages[tempIndex] = message;
+                
+                // Log the replacement for debugging
+                console.log('Temp message:', prev[tempIndex]);
+                console.log('Real message:', message);
+                
+                return newMessages;
+              }
+            }
+            
             // Otherwise add as new message
+            console.log('📩 Adding new message to state:', message);
             return [...prev, message];
           });
           
@@ -149,7 +210,7 @@ const ChatInterface = () => {
           }, 100);
         });
         
-        // 6. Set up message sent confirmation listener
+        // 7. Set up message sent confirmation listener
         const messageSentUnsubscribe = socketService.on('message_sent', (data) => {
           console.log('✅ Message sent confirmation:', data);
           
@@ -176,7 +237,7 @@ const ChatInterface = () => {
           }
         });
         
-        // 7. Set up message uncertainty listener (when delivery is uncertain)
+        // 8. Set up message uncertainty listener (when delivery is uncertain)
         const messageUncertaintyUnsubscribe = socketService.on('message_uncertainty', (data) => {
           console.log('⚠️ Message delivery uncertain:', data);
           
@@ -194,13 +255,14 @@ const ChatInterface = () => {
           );
         });
         
-        // 8. Set initial connection status based on current socket state
+        // 9. Set initial connection status based on current socket state
         setSocketConnected(socketService.isSocketConnected());
         
-        // 9. Clean up function
+        // 10. Clean up function
         return () => {
           console.log('🧹 Cleaning up chat interface');
           connectionStatusUnsubscribe();
+          socketErrorUnsubscribe();
           newMessageUnsubscribe();
           messageSentUnsubscribe();
           messageUncertaintyUnsubscribe();
@@ -358,20 +420,22 @@ const ChatInterface = () => {
     const fetchMessages = async () => {
       try {
         setLoading(true);
-        const response = await api.get(`/chat/contracts/${contractId}/messages`);
+        const result = await chatService.getMessages(contractId);
         
-        if (response.data && response.data.messages) {
-          setMessages(response.data.messages);
+        if (result.success && result.messages) {
+          setMessages(result.messages);
           
           // Set oldest message timestamp for pagination
-          if (response.data.messages.length > 0) {
-            setOldestMessageTimestamp(response.data.messages[0].createdAt);
+          if (result.messages.length > 0) {
+            setOldestMessageTimestamp(result.messages[0].createdAt);
           }
           
           // If fewer messages returned than limit, we've reached the end
-          if (response.data.messages.length < 20) {
+          if (result.messages.length < 20) {
             setHasMoreMessages(false);
           }
+        } else {
+          throw new Error('Failed to fetch messages');
         }
       } catch (error) {
         console.error('Error fetching messages:', error);
@@ -397,7 +461,8 @@ const ChatInterface = () => {
   useEffect(() => {
     const markAsRead = async () => {
       try {
-        await api.put(`/chat/contracts/${contractId}/messages/read`);
+        // Use chatService to mark messages as read
+        await chatService.markAsRead(contractId);
         
         // If socket is connected, also notify via socket
         if (socketService.isSocketConnected()) {
@@ -419,12 +484,13 @@ const ChatInterface = () => {
     
     try {
       setLoadingMore(true);
-      const response = await api.get(`/chat/contracts/${contractId}/messages`, {
-        params: { before: oldestMessageTimestamp, limit: 20 }
+      const result = await chatService.getMessages(contractId, {
+        before: oldestMessageTimestamp,
+        limit: 20
       });
       
-      if (response.data && response.data.messages) {
-        const olderMessages = response.data.messages;
+      if (result.success && result.messages) {
+        const olderMessages = result.messages;
         
         // Append older messages to the beginning of the messages array
         setMessages(prevMessages => [...olderMessages, ...prevMessages]);
@@ -438,6 +504,8 @@ const ChatInterface = () => {
         if (olderMessages.length < 20) {
           setHasMoreMessages(false);
         }
+      } else {
+        throw new Error('Failed to load more messages');
       }
     } catch (error) {
       console.error('Error loading more messages:', error);
@@ -497,56 +565,87 @@ const ChatInterface = () => {
       
       // Try sending through socket first
       let sentViaSocket = false;
+      let apiResult = null;
+      
       if (socketService.isSocketConnected()) {
         sentViaSocket = socketService.sendMessage(contractId, messageData);
         console.log('📤 Sent via socket:', sentViaSocket);
       }
       
-      // If socket send failed, use REST API
+      // If socket send failed, use chatService immediately
       if (!sentViaSocket) {
-        console.log('📤 Sending via API instead');
-        const response = await api.post(`/chat/contracts/${contractId}/messages`, messageData);
+        console.log('📤 Socket send failed, using API instead');
+        apiResult = await chatService.sendMessage(contractId, messageData);
         
-        if (response.data && response.data.message) {
+        if (apiResult.success && apiResult.message) {
           // Replace temp message with real one
           setMessages(prev => {
             return prev.map(msg => {
               if (msg._id === tempId) {
-                return response.data.message;
+                return apiResult.message;
               }
               return msg;
             });
           });
-          
-          setSendingMessage(false);
+        } else {
+          throw new Error('Failed to send message via API');
         }
       }
       
       // Set a safety timeout to ensure UI doesn't get stuck
-      setTimeout(() => {
+      // and to check if we need to fall back to API if socket didn't deliver
+      setTimeout(async () => {
+        // Always clean up sending state
         setSendingMessage(false);
         
         // Check if the temp message is still in 'sending' state
-        setMessages(prev => {
-          const hasUnconfirmedMessage = prev.some(msg => 
-            msg._id === tempId && msg.isTemp && msg.status === 'sending');
+        const stillSending = messages.some(msg => 
+          msg._id === tempId && msg.isTemp && msg.status === 'sending');
           
-          if (hasUnconfirmedMessage) {
-            console.log('⚠️ Message still unconfirmed after timeout');
-            return prev.map(msg => {
-              if (msg._id === tempId && msg.isTemp) {
-                return {
-                  ...msg,
-                  status: 'uncertain',
-                  content: `${msg.content} (delivery unconfirmed)`
-                };
-              }
-              return msg;
-            });
+        // If message is still unconfirmed and we didn't already use the API, try API now
+        if (stillSending && !apiResult) {
+          console.log('⚠️ Socket delivery timeout, falling back to API');
+          try {
+            // Try sending via API as a fallback
+            const fallbackResult = await chatService.sendMessage(contractId, messageData);
+            
+            if (fallbackResult.success && fallbackResult.message) {
+              // Replace temp message with the real one from API
+              setMessages(prev => 
+                prev.map(msg => {
+                  if (msg._id === tempId) {
+                    return fallbackResult.message;
+                  }
+                  return msg;
+                })
+              );
+            } else {
+              // Mark as uncertain if API also failed
+              setMessages(prev => 
+                prev.map(msg => {
+                  if (msg._id === tempId) {
+                    return {
+                      ...msg,
+                      status: 'uncertain',
+                    };
+                  }
+                  return msg;
+                })
+              );
+            }
+          } catch (fallbackError) {
+            console.error('❌ API fallback also failed:', fallbackError);
+            // Mark message as failed
+            setMessages(prev => 
+              prev.map(msg => {
+                if (msg._id === tempId) {
+                  return { ...msg, status: 'failed' };
+                }
+                return msg;
+              })
+            );
           }
-          
-          return prev;
-        });
+        }
       }, 8000);
       
     } catch (error) {
@@ -584,6 +683,40 @@ const ChatInterface = () => {
       const inputEl = document.getElementById('message-input');
       if (inputEl) inputEl.focus();
     }, 0);
+  };
+  
+  // Handle retrying a failed image upload
+  const handleRetryImage = (failedMessage) => {
+    // Check if we have the original image data in the DOM
+    const imageUrl = failedMessage.image?.url;
+    if (!imageUrl || !imageUrl.startsWith('data:')) {
+      toast.error('Cannot retry - original image data not available');
+      return;
+    }
+    
+    // Convert data URL back to a file
+    fetch(imageUrl)
+      .then(res => res.blob())
+      .then(blob => {
+        // Create a File object
+        const fileName = `retry-image-${Date.now()}.jpg`;
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+        
+        // Set up the image upload process again
+        setSelectedImage(file);
+        setImagePreview(imageUrl);
+        setImageCaption(failedMessage.content || '');
+        
+        // Remove the failed message
+        setMessages(prev => prev.filter(msg => msg._id !== failedMessage._id));
+        
+        // Show a toast to let the user know they can send the image again
+        toast.success('Image ready to retry sending');
+      })
+      .catch(error => {
+        console.error('Error preparing image for retry:', error);
+        toast.error('Could not prepare image for retry');
+      });
   };
   
   // Handle counter offer form changes
@@ -698,76 +831,61 @@ const ChatInterface = () => {
     }
   };
   
-  // Accept offer function
+  // Handle accepting an offer
   const handleAcceptOffer = async () => {
     try {
-      // Show confirmation
-      const confirmed = window.confirm("Are you sure you want to accept this offer?");
-      if (!confirmed) return;
-      
       setSendingMessage(true);
       
-      // Create a temporary system message for immediate UI feedback
-      const tempId = 'temp-accept-' + Date.now();
-      const tempSystemMessage = {
-        _id: tempId,
-        contractId,
-        senderId: {
-          _id: user._id,
-          Name: user.Name,
-          photo: user.photo
-        },
-        recipientId: otherParty?._id, 
-        messageType: 'systemMessage',
-        content: `${user.Name} has accepted the contract offer.`,
-        createdAt: new Date().toISOString(),
-        isTemp: true
-      };
+      // Try to accept offer via socket first for real-time experience
+      let acceptedViaSocket = false;
+      if (socketService.isSocketConnected()) {
+        acceptedViaSocket = await socketService.acceptOffer(contractId);
+      }
       
-      // Add temp system message to UI immediately
-      setMessages(prev => [...prev, tempSystemMessage]);
+      // If socket acceptance failed, use the API
+      if (!acceptedViaSocket) {
+        const result = await chatService.acceptCounterOffer(contractId);
+        
+        if (!result.success) {
+          throw new Error('Failed to accept offer');
+        }
+      }
       
-      // Update contract status in UI immediately
+      // Optimistically update contract status in UI for better UX
       setContract(prev => ({
         ...prev,
         status: 'accepted'
       }));
       
-      // Display success message immediately
-      toast.success('Offer accepted successfully');
-      
-      // Try socket first, fall back to API if needed
-      let sentViaSocket = false;
-      if (socketService.isSocketConnected()) {
-        try {
-          sentViaSocket = socketService.acceptOffer(contractId);
-        } catch (socketError) {
-          console.error('Socket error when accepting offer:', socketError);
-          sentViaSocket = false;
+      // Add system message about the acceptance
+      const systemMessage = {
+        _id: `system-${Date.now()}`,
+        contractId,
+        messageType: 'systemMessage',
+        content: 'The counter offer has been accepted. The contract is now finalized.',
+        createdAt: new Date().toISOString(),
+        senderId: {
+          _id: 'system',
+          Name: 'System',
+        },
+        recipientId: {
+          _id: 'all'
         }
-      }
+      };
       
-      // Use REST API if socket didn't work
-      if (!sentViaSocket) {
-        try {
-          await api.post(`/chat/contracts/${contractId}/accept-offer`);
-        } catch (apiError) {
-          console.error('API error when accepting offer:', apiError);
-          throw apiError; // Re-throw to be caught by outer catch
+      setMessages(prev => [...prev, systemMessage]);
+      
+      // Scroll to bottom to show the system message
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
-      }
+      }, 100);
       
+      toast.success('Counter offer accepted successfully');
     } catch (error) {
       console.error('Error accepting offer:', error);
-      toast.error('Failed to accept offer');
-      
-      // Revert UI changes on error
-      setMessages(prev => prev.filter(msg => !msg.isTemp));
-      
-      setContract(prev => ({
-        ...prev,
-        status: 'negotiating'
-      }));
+      toast.error('Failed to accept offer. Please try again.');
     } finally {
       setSendingMessage(false);
     }
@@ -782,200 +900,185 @@ const ChatInterface = () => {
     }
   };
   
-  // Render message item
-  const MessageItem = ({ message }) => {
-    const isCurrentUser = message.senderId._id === user._id;
-    const formattedTime = formatMessageTime(message.createdAt);
+  // Function to handle image selection
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
     
-    return (
-      <div 
-        className={`mb-4 flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
-      >
-        {!isCurrentUser && !message.messageType === 'systemMessage' && (
-          <div className="w-8 h-8 rounded-full overflow-hidden mr-2 mt-1">
-            {message.senderId.photo ? (
-              <img 
-                src={message.senderId.photo} 
-                alt={message.senderId.Name}
-                className="w-full h-full object-cover" 
-              />
-            ) : (
-              <div className="w-full h-full bg-gray-300 flex items-center justify-center text-gray-600">
-                <FaUser className="text-sm" />
-              </div>
-            )}
-          </div>
-        )}
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please select a valid image (JPEG, PNG, WEBP)');
+      return;
+    }
+    
+    // Validate file size (5MB max)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      toast.error('Image size should be less than 5MB');
+      return;
+    }
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setSelectedImage(file);
+      setImagePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+  
+  // Function to cancel image upload
+  const cancelImageUpload = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    setImageCaption('');
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  };
+  
+  // Effect for preloading images
+  useEffect(() => {
+    // Find all image URLs in messages
+    const imageUrls = messages
+      .filter(msg => msg.messageType === 'image' && msg.image?.url)
+      .map(msg => msg.image.url);
+    
+    if (imageUrls.length > 0) {
+      console.log('🖼️ Preloading images:', imageUrls.length);
+      imageService.preloadImages(imageUrls)
+        .then(() => console.log('🖼️ Images preloaded successfully'))
+        .catch(err => console.error('Error preloading images:', err));
+    }
+  }, [messages]);
+
+  // Function to send an image message
+  const handleSendImage = async () => {
+    if (!selectedImage) return;
+    
+    try {
+      setUploadingImage(true);
+      
+      // Create a unique ID for the temporary message
+      const tempId = `temp-image-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      
+      // Create form data
+      const formData = new FormData();
+      formData.append('image', selectedImage);
+      if (imageCaption) {
+        formData.append('caption', imageCaption);
+      }
+      
+      // Keep a copy of the image data
+      const currentImagePreview = imagePreview;
+      const currentCaption = imageCaption || '';
+      
+      // Create a temporary message for instant feedback
+      const tempMessage = {
+        _id: tempId,
+        isTemp: true,
+        contractId,
+        content: currentCaption,
+        messageType: 'image',
+        createdAt: new Date().toISOString(),
+        senderId: {
+          _id: user._id,
+          Name: user.Name,
+          photo: user.photo
+        },
+        status: 'sending',
+        image: {
+          url: currentImagePreview
+        }
+      };
+      
+      // Reset image selection UI immediately for better UX
+      // This allows user to prepare next image while this one uploads
+      cancelImageUpload();
+      
+      // Add to message list immediately for better UX
+      setMessages(prev => {
+        // Check if we already have this exact image in the list (prevents duplicates)
+        const hasDuplicate = prev.some(msg => 
+          msg.messageType === 'image' && 
+          msg.image?.url === currentImagePreview && 
+          Math.abs(new Date(msg.createdAt) - new Date()) < 5000 // Within 5 seconds
+        );
         
-        <div className={`max-w-[75%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
-          {/* Message bubble */}
-          <div 
-            className={`rounded-lg p-3 ${
-              message.messageType === 'systemMessage' 
-                ? 'bg-gray-100 text-gray-700 italic mx-auto text-center max-w-md' 
-                : isCurrentUser 
-                  ? `bg-blue-600 text-white ${message.isTemp ? 'opacity-80' : ''}`
-                  : 'bg-gray-200 text-gray-800'
-            }`}
-          >
-            {/* Message content */}
-            <div className="whitespace-pre-wrap break-words">
-              {message.content}
-            </div>
-            
-            {/* Delivery status for current user's messages */}
-            {isCurrentUser && message.isTemp && (
-              <div className="mt-1 text-xs text-blue-200 flex items-center justify-end">
-                {message.status === 'failed' ? (
-                  <button 
-                    onClick={() => handleRetryMessage(message._id)}
-                    className="text-red-300 hover:text-red-100 flex items-center"
-                  >
-                    <FaExclamationTriangle className="mr-1" /> Failed - Click to retry
-                  </button>
-                ) : (
-                  <span className="flex items-center">
-                    <FaSpinner className="animate-spin mr-1" /> Sending...
-                  </span>
-                )}
-              </div>
-            )}
-            
-            {/* Special display for offer messages */}
-            {message.messageType === 'offerMessage' && message.offer && (
-              <div className="mt-2 pt-2 border-t border-opacity-20 border-gray-200 text-sm">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Price:</span>
-                    <span className="ml-1 font-medium">₹{message.offer.pricePerUnit || 0}</span>
-                  </div>
-                  <div>
-                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Quantity:</span>
-                    <span className="ml-1 font-medium">{(message.offer.quantity || 0)} {contract?.unit || 'units'}</span>
-                  </div>
-                  <div>
-                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Delivery:</span>
-                    <span className="ml-1 font-medium">{message.offer.deliveryDate ? new Date(message.offer.deliveryDate).toLocaleDateString() : 'Not specified'}</span>
-                  </div>
-                  <div>
-                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Total:</span>
-                    <span className="ml-1 font-medium">₹{(parseFloat(message.offer.pricePerUnit || 0) * parseFloat(message.offer.quantity || 0)).toFixed(2)}</span>
-                  </div>
-                </div>
-                
-                {/* Offer response buttons for other party */}
-                {!isCurrentUser && contract?.status === 'negotiating' && (
-                  <div className="mt-2 pt-2 border-t border-opacity-20 border-gray-200 flex justify-between">
-                    <button 
-                      onClick={() => handleAcceptOffer()}
-                      className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 flex items-center"
-                      disabled={sendingMessage}
-                    >
-                      {sendingMessage ? <FaSpinner className="animate-spin mr-1" /> : <FaCheck className="mr-1" />}
-                      Accept
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setOfferFormData({
-                          pricePerUnit: message.offer.pricePerUnit || '',
-                          quantity: message.offer.quantity || '',
-                          deliveryDate: message.offer.deliveryDate ? new Date(message.offer.deliveryDate).toISOString().split('T')[0] : '',
-                          qualityRequirements: message.offer.qualityRequirements || '',
-                          specialRequirements: message.offer.specialRequirements || ''
-                        });
-                        setShowOfferForm(true);
-                      }}
-                      className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center"
-                    >
-                      <FaHandshake className="mr-1" /> Counter
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {/* Special display for counter offer messages */}
-            {message.messageType === 'counterOffer' && message.offer && (
-              <div className="mt-2 pt-2 border-t border-opacity-20 border-gray-200 text-sm">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Price:</span>
-                    <span className="ml-1 font-medium">₹{message.offer.pricePerUnit || 0}</span>
-                  </div>
-                  <div>
-                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Quantity:</span>
-                    <span className="ml-1 font-medium">{(message.offer.quantity || 0)} {contract?.unit || 'units'}</span>
-                  </div>
-                  <div>
-                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Delivery:</span>
-                    <span className="ml-1 font-medium">{message.offer.deliveryDate ? new Date(message.offer.deliveryDate).toLocaleDateString() : 'Not specified'}</span>
-                  </div>
-                  <div>
-                    <span className={isCurrentUser ? 'text-blue-200' : 'text-gray-600'}>Total:</span>
-                    <span className="ml-1 font-medium">₹{(parseFloat(message.offer.pricePerUnit || 0) * parseFloat(message.offer.quantity || 0)).toFixed(2)}</span>
-                  </div>
-                </div>
-                
-                {/* Offer response buttons for other party */}
-                {!isCurrentUser && contract?.status === 'negotiating' && (
-                  <div className="mt-2 pt-2 border-t border-opacity-20 border-gray-200 flex justify-between">
-                    <button 
-                      onClick={() => handleAcceptOffer()}
-                      className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 flex items-center"
-                      disabled={sendingMessage}
-                    >
-                      {sendingMessage ? <FaSpinner className="animate-spin mr-1" /> : <FaCheck className="mr-1" />}
-                      Accept
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setOfferFormData({
-                          pricePerUnit: message.offer.pricePerUnit || '',
-                          quantity: message.offer.quantity || '',
-                          deliveryDate: message.offer.deliveryDate ? new Date(message.offer.deliveryDate).toISOString().split('T')[0] : '',
-                          qualityRequirements: message.offer.qualityRequirements || '',
-                          specialRequirements: message.offer.specialRequirements || ''
-                        });
-                        setShowOfferForm(true);
-                      }}
-                      className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center"
-                    >
-                      <FaHandshake className="mr-1" /> Counter
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+        if (hasDuplicate) {
+          console.log('🖼️ Duplicate image detected, not adding temp message');
+          return prev;
+        }
+        
+        return [...prev, tempMessage];
+      });
+      
+      // Scroll to bottom to show new message
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 50);
+      
+      // Send the image using chatService
+      console.log('📤 Uploading image message via API');
+      const result = await chatService.sendImageMessage(contractId, formData);
+      
+      if (result.success && result.message) {
+        console.log('✅ Image uploaded successfully:', result.message);
+        
+        // Preload the real image for instant display
+        if (result.message.image?.url) {
+          imageService.preloadImage(result.message.image.url)
+            .then(() => console.log('✅ Uploaded image preloaded successfully'));
+        }
+        
+        // Replace temp message with real one
+        setMessages(prev => {
+          // First check if we already have this exact message (can happen with socket events)
+          const hasExact = prev.some(msg => !msg.isTemp && msg._id === result.message._id);
+          if (hasExact) {
+            console.log('✅ Exact message already exists, removing temp version');
+            return prev.filter(msg => msg._id !== tempId);
+          }
           
-          {/* Timestamp and sender info */}
-          <div className={`flex items-center mt-1 text-xs text-gray-500 ${
-            isCurrentUser ? 'justify-end' : 'justify-start'
-          }`}>
-            {!isCurrentUser && !message.messageType === 'systemMessage' && (
-              <span className="mr-1 font-medium">{message.senderId.Name}</span>
-            )}
-            <span>{formattedTime}</span>
-          </div>
-        </div>
+          return prev.map(msg => {
+            if (msg._id === tempId) {
+              return result.message;
+            }
+            return msg;
+          });
+        });
         
-        {isCurrentUser && !message.messageType === 'systemMessage' && (
-          <div className="w-8 h-8 rounded-full overflow-hidden ml-2 mt-1">
-            {message.senderId.photo ? (
-              <img 
-                src={message.senderId.photo} 
-                alt="You"
-                className="w-full h-full object-cover" 
-              />
-            ) : (
-              <div className="w-full h-full bg-blue-300 flex items-center justify-center text-blue-600">
-                <FaUser className="text-sm" />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
+        // Ensure scroll to bottom after successful upload
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 300);
+        
+        toast.success('Image sent successfully');
+      } else {
+        console.error('❌ API reported failure sending image', result);
+        throw new Error('Failed to send image - server rejected the upload');
+      }
+    } catch (error) {
+      console.error('❌ Error sending image:', error);
+      toast.error('Failed to send image: ' + (error.message || 'Unknown error'));
+      
+      // Mark temp message as failed
+      setMessages(prev => 
+        prev.map(msg => {
+          if (msg._id.startsWith('temp-image-') && msg.isTemp) {
+            return { ...msg, status: 'failed' };
+          }
+          return msg;
+        })
+      );
+    } finally {
+      setUploadingImage(false);
+    }
   };
   
   if (loading) {
@@ -1150,7 +1253,13 @@ const ChatInterface = () => {
         {/* Messages List */}
         <div className="space-y-3">
           {messages.map(message => (
-            <MessageItem key={message._id} message={message} />
+            <MessageItem 
+              key={message._id} 
+              message={message} 
+              user={user}
+              handleRetryImage={handleRetryImage}
+              handleRetryMessage={handleRetryMessage}
+            />
           ))}
           <div ref={messagesEndRef} />
         </div>
@@ -1278,9 +1387,57 @@ const ChatInterface = () => {
       {/* Message input */}
       {!showOfferForm && (
         <div className="border-t p-3">
+          {/* Image preview area */}
+          {imagePreview && (
+            <div className="mb-3 p-3 bg-gray-50 rounded-lg relative">
+              <div className="flex items-start">
+                <div className="relative w-24 h-24 rounded overflow-hidden border border-gray-300">
+                  <img 
+                    src={imagePreview} 
+                    alt="Selected" 
+                    className="w-full h-full object-cover" 
+                  />
+                  <button 
+                    onClick={cancelImageUpload}
+                    className="absolute top-0 right-0 bg-red-500 rounded-full p-1 text-white hover:bg-red-600"
+                    title="Remove image"
+                  >
+                    <FaTimesCircle className="text-xs" />
+                  </button>
+                </div>
+                <div className="ml-3 flex-1">
+                  <input
+                    type="text"
+                    value={imageCaption}
+                    onChange={(e) => setImageCaption(e.target.value)}
+                    placeholder="Add a caption (optional)"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={handleSendImage}
+                    disabled={uploadingImage}
+                    className="mt-2 px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 flex items-center disabled:opacity-50"
+                  >
+                    {uploadingImage ? (
+                      <>
+                        <FaSpinner className="animate-spin mr-1" /> Sending...
+                      </>
+                    ) : (
+                      <>
+                        <FaPaperPlane className="mr-1" /> Send Image
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Message input form */}
           <form onSubmit={handleSendMessage} className="flex items-end space-x-2">
             <div className="flex-grow relative">
               <textarea
+                id="message-input"
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 placeholder="Type a message..."
@@ -1296,6 +1453,26 @@ const ChatInterface = () => {
             </div>
             
             <div className="flex-shrink-0 flex space-x-2">
+              {/* Image upload button */}
+              <input
+                type="file"
+                accept="image/*"
+                ref={imageInputRef}
+                onChange={handleImageSelect}
+                className="hidden"
+                disabled={uploadingImage}
+              />
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingImage}
+                className="px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
+                title="Send image"
+              >
+                <FaImage />
+              </button>
+              
+              {/* Offer button */}
               {contract?.status !== 'accepted' && contract?.status !== 'completed' && (
                 <button
                   type="button"
@@ -1306,9 +1483,10 @@ const ChatInterface = () => {
                 </button>
               )}
               
+              {/* Send button */}
               <button
                 type="submit"
-                disabled={sendingMessage || !messageText.trim()}
+                disabled={sendingMessage || (!messageText.trim() && !selectedImage)}
                 className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:hover:bg-blue-600"
               >
                 {sendingMessage ? <FaSpinner className="animate-spin" /> : <FaPaperPlane />}

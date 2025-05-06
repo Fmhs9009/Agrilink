@@ -6,7 +6,8 @@ const {
     getUnreadCount, 
     markAsRead,
     getChatList,
-    acceptCounterOffer
+    acceptCounterOffer,
+    sendImageMessage
 } = require('../controllers/chatController');
 
 const router = express.Router();
@@ -24,6 +25,9 @@ router.get('/unread', getUnreadCount);
 router.route('/contracts/:contractId/messages')
     .get(getMessages)
     .post(sendMessage);
+
+// Route for sending image messages
+router.post('/contracts/:contractId/messages/image', sendImageMessage);
 
 // Mark messages as read
 router.put('/contracts/:contractId/messages/read', markAsRead);

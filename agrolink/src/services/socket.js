@@ -39,15 +39,18 @@ class SocketService {
       const baseURL = API_CONFIG.BASE_URL.replace('/api/v1', '');
       this.log('🔌 Connecting to socket server:', baseURL);
       
-      // Create new socket connection
+      // Create new socket connection with optimized settings
       this.socket = io(baseURL, {
         auth: { token },
         transports: ['websocket', 'polling'],
         reconnection: true,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10,
         reconnectionDelay: 1000,
-        timeout: 20000, // Increased timeout
-        forceNew: true // Force new connection
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+        forceNew: true,
+        autoConnect: true,
+        query: { token }
       });
       
       // Set up core event handlers
@@ -145,12 +148,44 @@ class SocketService {
     
     this.socket.on('error', (error) => {
       this.log('❌ Socket error:', error);
-      toast.error('Chat error: ' + (error.message || 'Unknown error'));
+      
+      // Handle different error formats
+      let errorMessage = 'Unknown error';
+      
+      if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && error.message) {
+        errorMessage = error.message;
+      } else if (error && typeof error === 'object') {
+        errorMessage = JSON.stringify(error);
+      }
+      
+      // Show user-friendly error toast for important socket errors
+      if (errorMessage.includes('authentication') || 
+          errorMessage.includes('unauthorized') ||
+          errorMessage.includes('Failed to send message')) {
+        toast.error('Chat error: ' + errorMessage, { id: 'socket-error' });
+      }
+      
+      // Emit error event for components to handle
+      this.triggerEvent('socket_error', { error, message: errorMessage });
     });
     
     // Handle server-side events
     this.socket.on('new_message', (message) => {
       this.log('📩 Received new message:', message);
+      
+      // If this is an image message, start preloading the image right away
+      if (message.messageType === 'image' && message.image?.url) {
+        // Import dynamically to avoid circular dependencies
+        import('./imageService').then(module => {
+          const imageService = module.default;
+          imageService.preloadImage(message.image.url)
+            .then(() => this.log('🖼️ Preloaded image from socket message:', message.image.url))
+            .catch(err => this.log('❌ Failed to preload image:', err));
+        });
+      }
+      
       this.triggerEvent('new_message', message);
     });
     
@@ -370,59 +405,81 @@ class SocketService {
     return true;
   }
   
-  // Send a message via socket
+  /**
+   * Send a message through the socket
+   * @param {string} contractId - ID of the contract
+   * @param {Object} message - Message object with content, messageType, etc.
+   * @param {string} message.content - Message text content
+   * @param {string} message.messageType - Type of message: 'text', 'image', 'counterOffer'
+   * @param {Object} message.offer - Offer details (for counter offers)
+   * @param {Object} message.image - Image data (for image messages)
+   * @returns {boolean} - Whether the message was sent via socket
+   */
   sendMessage(contractId, message) {
-    if (!this.isSocketConnected()) {
-      this.log('⚠️ Cannot send message - not connected');
+    if (!this.isSocketConnected() || !contractId) {
       return false;
     }
     
     try {
-      // Generate a unique client message ID if one isn't provided
-      if (!message.clientMessageId) {
-        message.clientMessageId = `client-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      // Generate a unique client message ID for tracking
+      const clientMessageId = `client-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      
+      // Note: For images, we don't send via socket since they need to be uploaded
+      // Images are sent directly to the API endpoint
+      if (message.messageType === 'image') {
+        return false; 
       }
       
-      this.log('📤 Sending message to contract:', contractId);
-      
-      // Add message to pending messages registry
-      this.pendingMessages[message.clientMessageId] = {
-        contractId,
-        message,
-        sentAt: Date.now(),
-        attempts: 1
+      // Validate and ensure message object has valid content to prevent errors
+      const messageData = {
+        messageType: message.messageType || 'text',
+        // Ensure content is always a string, never undefined
+        content: typeof message.content === 'string' ? message.content : '',
+        senderId: message.senderId,
+        clientMessageId,
+        tempId: message.tempId, // Store temp ID if provided
       };
       
-      // Set up timeout for message uncertainty
-      const uncertaintyTimeout = setTimeout(() => {
-        // If message is still pending after timeout
-        if (this.pendingMessages[message.clientMessageId]) {
-          this.log('⚠️ No acknowledgement received for message:', message.clientMessageId);
+      // Add offer data if present for counter offers
+      if (message.offer) {
+        messageData.offer = message.offer;
+      }
+      
+      // Add message to pending list
+      this.pendingMessages[clientMessageId] = {
+        contractId,
+        message: messageData,
+        timestamp: Date.now(),
+        tempMessageId: message.tempId // Store temp ID if provided
+      };
+      
+      // Set timeout for uncertainty
+      this.messageTimeouts[clientMessageId] = setTimeout(() => {
+        // If message is still pending after timeout, mark as uncertain
+        if (this.pendingMessages[clientMessageId]) {
+          this.log('⚠️ Message delivery uncertain:', clientMessageId);
           
-          // Emit uncertainty event for UI updates
+          // Trigger uncertainty event for UI
           this.triggerEvent('message_uncertainty', {
-            clientMessageId: message.clientMessageId,
-            contractId,
-            message
+            clientMessageId,
+            message: this.pendingMessages[clientMessageId].message
           });
           
-          // Keep message in pending - will be retried on reconnection
+          // Keep in pending list for potential completion
         }
-      }, 8000);
+      }, 5000); // 5 second timeout
       
-      // Store the uncertainty timeout reference
-      this.messageTimeouts[message.clientMessageId] = uncertaintyTimeout;
-      
-      // Send the message through socket
-      this.socket.emit('send_message', { 
-        contractId, 
-        message
+      // Emit the message through socket
+      this.socket.emit('send_message', {
+        contractId,
+        clientMessageId,
+        ...messageData
       });
       
-      // Message was sent successfully (but not yet confirmed by server)
+      this.log('📤 Message sent through socket:', { contractId, clientMessageId, messageData });
       return true;
     } catch (error) {
-      this.log('❌ Error sending message:', error);
+      this.log('❌ Error sending message through socket:', error);
       return false;
     }
   }

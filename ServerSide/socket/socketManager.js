@@ -180,13 +180,28 @@ const setupSocketServer = (io) => {
     });
     
     // Handle send message event with more debug
-    socket.on('send_message', async ({ contractId, message }) => {
+    socket.on('send_message', async ({ contractId, clientMessageId, messageType, content, offer, ...messageData }) => {
       try {
-        console.log(`Send message request: User ${socket.user?.Name} for contract ${contractId}`);
-        console.log('Message content:', message.content?.substring(0, 30) + (message.content?.length > 30 ? '...' : ''));
+        // Create a properly structured message object from separate parameters
+        const message = {
+          messageType: messageType || 'text',
+          content: content || '',
+          offer,
+          clientMessageId,
+          ...messageData
+        };
         
-        if (!contractId || !message) {
-          socket.emit('error', { message: 'Contract ID and message are required' });
+        console.log(`Send message request: User ${socket.user?.Name} for contract ${contractId}`);
+        
+        // Safely log message content if it exists
+        if (message.content) {
+          console.log('Message content:', message.content.substring(0, 30) + (message.content.length > 30 ? '...' : ''));
+        } else {
+          console.log('Message has no content. Type:', message.messageType);
+        }
+        
+        if (!contractId) {
+          socket.emit('error', { message: 'Contract ID is required' });
           return;
         }
         
@@ -213,13 +228,14 @@ const setupSocketServer = (io) => {
         // Determine recipient
         const recipientId = userId === farmerId ? buyerId : farmerId;
         
-        // Create message
+        // Create message object with proper validation
         const newMessage = {
           contractId,
           senderId: userId,
           recipientId,
           messageType: message.messageType || 'text',
-          content: message.content,
+          // Ensure content is never undefined
+          content: typeof message.content === 'string' ? message.content : '',
           read: false
         };
         
@@ -295,8 +311,15 @@ const setupSocketServer = (io) => {
         const sockets = await io.in(roomName).fetchSockets();
         console.log(`Emitting message to room ${roomName} with ${sockets.length} members`);
         
-        // Emit to all users in the contract room
-        io.to(roomName).emit('new_message', populatedMessage);
+        // Emit to all users in the contract room - use a timeout to ensure DB operation completes
+        setTimeout(() => {
+          try {
+            io.to(roomName).emit('new_message', populatedMessage);
+            console.log(`Message emitted successfully to room: ${roomName}`);
+          } catch (emitError) {
+            console.error('Error emitting message:', emitError);
+          }
+        }, 100);
         
         // Also broadcast to recipient's personal room
         io.to(`user:${recipientId}`).emit('new_notification', {

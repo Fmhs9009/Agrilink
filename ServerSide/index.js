@@ -82,6 +82,9 @@ const io = new Server(server, {
   }
 });
 
+// Make io available to controllers
+app.set('socketio', io);
+
 // Setup socket server
 setupSocketServer(io);
 
